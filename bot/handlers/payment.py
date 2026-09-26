@@ -159,6 +159,7 @@ async def cb_pay_crypto(
     session: AsyncSession,
     db_user: User,
     cryptobot: CryptoBotPayment | None,
+    admin_ids: list[int],
 ) -> None:
     if not cryptobot:
         await callback.message.edit_text(  # type: ignore[union-attr]
@@ -194,6 +195,24 @@ async def cb_pay_crypto(
     )
     await session.commit()
 
+    # Notify admins
+    if callback.bot and db_user.id not in admin_ids:
+        uname = f"@{db_user.username}" if db_user.username else "нет юзернейма"
+        name = db_user.first_name or "Пользователь"
+        for aid in admin_ids:
+            try:
+                await callback.bot.send_message(
+                    aid,
+                    f"💳 <b>Запрос на пополнение баланса</b>\n\n"
+                    f"👤 Пользователь: <b>{name}</b> ({uname})\n"
+                    f"🆔 ID: <code>{db_user.id}</code>\n"
+                    f"💵 Сумма: <b>{format_price(amount)}</b>\n"
+                    f"🤖 Способ: CryptoBot",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"🤖 <b>Оплата через CryptoBot</b>\n\n"
         f"Сумма: <b>{format_price(amount)}</b>\n\n"
@@ -219,6 +238,7 @@ async def cb_check_crypto(
     session: AsyncSession,
     db_user: User,
     cryptobot: CryptoBotPayment | None,
+    admin_ids: list[int],
 ) -> None:
     if not cryptobot:
         await callback.answer("CryptoBot не настроен", show_alert=True)
@@ -248,6 +268,25 @@ async def cb_check_crypto(
                 reason=f"Пополнение CryptoBot #{invoice_id}",
             )
             await session.commit()
+
+            # Notify admins
+            if callback.bot:
+                uname = f"@{db_user.username}" if db_user.username else "нет юзернейма"
+                name = db_user.first_name or "Пользователь"
+                for aid in admin_ids:
+                    try:
+                        await callback.bot.send_message(
+                            aid,
+                            f"💰 <b>ПОПОЛНЕНИЕ БАЛАНСА!</b>\n\n"
+                            f"👤 Пользователь: <b>{name}</b> ({uname})\n"
+                            f"🆔 ID: <code>{db_user.id}</code>\n"
+                            f"💵 Зачислено: <b>+{format_price(amount)}</b>\n"
+                            f"📈 Новый баланс: <b>{format_price(new_balance)}</b>\n"
+                            f"🤖 Способ: CryptoBot",
+                            parse_mode="HTML",
+                        )
+                    except Exception:
+                        pass
 
             await callback.message.edit_text(  # type: ignore[union-attr]
                 f"✅ <b>Оплата получена!</b>\n\n"

@@ -232,6 +232,7 @@ async def poll_user_deposits(
     session_factory: async_sessionmaker[AsyncSession],
     cryptobot: CryptoBotPayment | None,
     yookassa: YooKassaPayment | None,
+    admin_ids: list[int] | None = None,
     interval: float = 25.0,
 ) -> None:
     """Background task: auto-check pending user deposits for CryptoBot and YooKassa."""
@@ -277,6 +278,21 @@ async def poll_user_deposits(
                                     )
                                 except Exception:
                                     pass
+
+                                if admin_ids:
+                                    for aid in admin_ids:
+                                        try:
+                                            await bot.send_message(
+                                                aid,
+                                                f"💰 <b>АВТО-ПОПОЛНЕНИЕ БАЛАНСА!</b>\n\n"
+                                                f"👤 Пользователь ID: <code>{dep.user_id}</code>\n"
+                                                f"💵 Зачислено: <b>+{format_price(dep.amount_rub)}</b>\n"
+                                                f"📈 Новый баланс: <b>{format_price(new_bal)}</b>\n"
+                                                f"🤖 Способ: CryptoBot",
+                                                parse_mode="HTML",
+                                            )
+                                        except Exception:
+                                            pass
                         except Exception as e:
                             logger.debug("poll_cryptobot_err", error=str(e), dep_id=dep.id)
 
@@ -308,6 +324,21 @@ async def poll_user_deposits(
                                     )
                                 except Exception:
                                     pass
+
+                                if admin_ids:
+                                    for aid in admin_ids:
+                                        try:
+                                            await bot.send_message(
+                                                aid,
+                                                f"💰 <b>АВТО-ПОПОЛНЕНИЕ БАЛАНСА!</b>\n\n"
+                                                f"👤 Пользователь ID: <code>{dep.user_id}</code>\n"
+                                                f"💵 Зачислено: <b>+{format_price(dep.amount_rub)}</b>\n"
+                                                f"📈 Новый баланс: <b>{format_price(new_bal)}</b>\n"
+                                                f"🤖 Способ: CryptoBot",
+                                                parse_mode="HTML",
+                                            )
+                                        except Exception:
+                                            pass
                         except Exception as e:
                             logger.debug("poll_yookassa_err", error=str(e), dep_id=dep.id)
 

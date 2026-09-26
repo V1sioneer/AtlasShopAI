@@ -311,3 +311,20 @@ async def cb_confirm_catalog(
         parse_mode="HTML",
     )
     await callback.answer()
+
+    if callback.bot:
+        uname = f"@{db_user.username}" if db_user.username else "нет юзернейма"
+        name = db_user.first_name or "Пользователь"
+        for aid in admin_ids:
+            try:
+                await callback.bot.send_message(
+                    aid,
+                    f"🛒 <b>НОВАЯ ПОКУПКА В КАТАЛОГЕ!</b>\n\n"
+                    f"👤 Покупатель: <b>{name}</b> ({uname})\n"
+                    f"🆔 ID: <code>{db_user.id}</code>\n"
+                    f"📦 Заказ: #{result.order_id}\n"
+                    f"💰 Сумма: <b>{format_price(user_price)}</b>",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass

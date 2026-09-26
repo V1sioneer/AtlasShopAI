@@ -32,6 +32,7 @@ class UserRepo:
         stmt = select(User).where(User.id == user_id)
         result = await self.session.execute(stmt)
         user = result.scalar_one_or_none()
+        is_new = False
         if user is None:
             user = User(
                 id=user_id,
@@ -41,13 +42,26 @@ class UserRepo:
             )
             self.session.add(user)
             await self.session.flush()
+            is_new = True
         else:
             if username is not None:
                 user.username = username
             if first_name is not None:
                 user.first_name = first_name
             await self.session.flush()
+        user._is_new = is_new
         return user
+
+    async def count(self) -> int:
+        stmt = select(func.count(User.id))
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
+
+    async def count_today(self) -> int:
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        stmt = select(func.count(User.id)).where(User.created_at >= today_start)
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
 
     async def get(self, user_id: int) -> Optional[User]:
         stmt = select(User).where(User.id == user_id)
@@ -71,6 +85,11 @@ class UserRepo:
 class OrderRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def count(self) -> int:
+        stmt = select(func.count(Order.id))
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
 
     async def create(
         self,
@@ -267,6 +286,12 @@ class GameProductRepo:
 class DepositRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def get_paid_stats(self) -> tuple[int, float]:
+        stmt = select(func.count(Deposit.id), func.coalesce(func.sum(Deposit.amount_rub), 0.0)).where(Deposit.status == "paid")
+        result = await self.session.execute(stmt)
+        row = result.one()
+        return row[0], float(row[1])
 
     async def create(
         self,

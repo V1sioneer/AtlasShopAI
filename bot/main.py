@@ -160,6 +160,7 @@ async def main() -> None:
                     session_factory=session_factory,
                     cryptobot=cryptobot,
                     yookassa=yookassa,
+                    admin_ids=settings.admin_ids,
                     interval=25.0,
                 )
             )

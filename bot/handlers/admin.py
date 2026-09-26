@@ -20,6 +20,64 @@ def _is_admin(user_id: int, admin_ids: list[int]) -> bool:
     return user_id in admin_ids
 
 
+
+# ── /admin & /stats ──────────────────────────────────────────────────
+
+
+@router.message(Command("admin"))
+@router.message(Command("stats"))
+async def cmd_admin_stats(
+    message: Message,
+    session: AsyncSession,
+    api: PartnerAPIClient,
+    admin_ids: list[int],
+    dispatcher: Dispatcher,
+) -> None:
+    if not _is_admin(message.from_user.id, admin_ids):  # type: ignore[union-attr]
+        return
+
+    from bot.db.repo import OrderRepo, DepositRepo
+
+    user_repo = UserRepo(session)
+    total_users = await user_repo.count()
+    today_users = await user_repo.count_today()
+
+    order_repo = OrderRepo(session)
+    total_orders = await order_repo.count()
+
+    dep_repo = DepositRepo(session)
+    total_deposits, sum_deposits = await dep_repo.get_paid_stats()
+
+    markup = dispatcher.get("markup_percent", 15.0)
+
+    try:
+        bal = await api.get_balance()
+        partner_bal_str = f"<b>{format_price(bal.balance)}</b> (скидка {bal.discount_percent}%)"
+    except Exception:
+        partner_bal_str = "<i>недоступен</i>"
+
+    text = (
+        f"👑 <b>Панель администратора</b>\n\n"
+        f"📊 <b>Статистика пользователей:</b>\n"
+        f"• Всего пользователей в БД: <b>{total_users}</b>\n"
+        f"• Новых за сегодня: <b>{today_users}</b>\n\n"
+        f"📦 <b>Заказы:</b>\n"
+        f"• Всего оформлено заказов: <b>{total_orders}</b>\n\n"
+        f"💰 <b>Пополнения баланса:</b>\n"
+        f"• Оплачено счетов: <b>{total_deposits}</b>\n"
+        f"• На общую сумму: <b>{format_price(sum_deposits)}</b>\n\n"
+        f"💼 <b>Партнёрский баланс:</b> {partner_bal_str}\n"
+        f"🏷 <b>Текущая наценка:</b> <b>{markup}%</b>\n\n"
+        f"🛠 <b>Доступные команды:</b>\n"
+        f"• <code>/set_markup 20</code> — изменить % наценки\n"
+        f"• <code>/topup_user ID СУММА</code> — выдать баланс пользователю\n"
+        f"• <code>/broadcast ТЕКСТ</code> — рассылка всем пользователям\n"
+        f"• <code>/partner_balance</code> — проверить баланс поставщика\n"
+        f"• <code>/deposit_crypto 1000</code> — пополнить баланс API"
+    )
+    await message.answer(text, parse_mode="HTML")
+
+
 # ── /set_markup ──────────────────────────────────────────────────────
 
 
