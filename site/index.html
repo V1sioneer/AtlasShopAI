@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>AtlasShop — Подписки на нейросети и цифровые сервисы</title>
+  <meta name="description" content="Официальный сервис подписок ChatGPT Plus, Claude 3.7, Gemini Pro, Spotify и пополнения Steam за рубли без зарубежных карт. Моментальная выдача в Telegram.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Background Ambient Refraction -->
+  <div class="ambient-canvas" aria-hidden="true">
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+  </div>
+
+  <!-- Header / Navigation -->
+  <header class="site-header">
+    <nav class="nav-glass">
+      <a href="#" class="brand">
+        <span class="brand-apple-icon"></span>
+        <span class="brand-name">AtlasShop</span>
+        <span class="brand-badge">Telegram Store</span>
+      </a>
+
+      <div class="nav-links">
+        <a href="#catalog">Каталог</a>
+        <a href="#how-it-works">Как работает</a>
+        <a href="#guarantee">Гарантия</a>
+        <a href="#faq">FAQ</a>
+      </div>
+
+      <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-glass-nav">
+        <span>Открыть бота</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"/></svg>
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="hero-content">
+        <div class="hero-eyebrow">
+          <span class="pill-dot"></span>
+          <span>Официальный магазин @AtlasShopAI_bot</span>
+        </div>
+
+        <h1 class="hero-title">
+          Подписки на нейросети.<br>
+          <span class="text-gradient-glass">Без зарубежных карт.</span>
+        </h1>
+
+        <p class="hero-description">
+          ChatGPT Plus, Claude 3.7, Gemini Pro, Spotify и пополнение Steam.
+          Оплата через СБП, российские карты или криптовалюту. Моментальная выдача в боте от 15 секунд.
+        </p>
+
+        <div class="hero-cta-group">
+          <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-primary-liquid">
+            <svg class="tg-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.75-.55 2.92-1.27 4.86-2.11 5.83-2.52 2.77-1.17 3.35-1.37 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+            </svg>
+            <span>Перейти в Telegram-бота</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+
+          <a href="#catalog" class="btn-secondary-glass">
+            <span>Выбрать подписку</span>
+          </a>
+        </div>
+
+        <!-- Trust Metrics Ribbon -->
+        <div class="trust-ribbon">
+          <div class="trust-item">
+            <span class="trust-val">15 сек</span>
+            <span class="trust-lbl">средняя скорость выдачи</span>
+          </div>
+          <div class="trust-sep"></div>
+          <div class="trust-item">
+            <span class="trust-val">100%</span>
+            <span class="trust-lbl">гарантия на весь период</span>
+          </div>
+          <div class="trust-sep"></div>
+          <div class="trust-item">
+            <span class="trust-val">0 ₽</span>
+            <span class="trust-lbl">скрытых комиссий сервиса</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Catalog Bento Showcase -->
+    <section id="catalog" class="catalog-section">
+      <div class="section-header">
+        <div class="section-tag">Каталог тарифов</div>
+        <h2 class="section-title">Всё необходимое в одном месте</h2>
+        <p class="section-subtitle">Официальные подписки и мгновенное пополнение с гарантией работы</p>
+      </div>
+
+      <!-- Filter Tabs with sliding pill -->
+      <div class="filter-tabs-wrapper">
+        <div class="filter-tabs-glass" id="filter-tabs">
+          <button class="tab-btn active" data-filter="all">Все товары</button>
+          <button class="tab-btn" data-filter="ai">🤖 Нейросети (AI)</button>
+          <button class="tab-btn" data-filter="media">🎬 Мультимедиа</button>
+          <button class="tab-btn" data-filter="games">🎮 Steam & Игры</button>
+        </div>
+      </div>
+
+      <!-- Bento Grid -->
+      <div class="bento-grid">
+
+        <!-- Card: ChatGPT Plus (Featured) -->
+        <div class="glass-card bento-hero-card" data-category="ai">
+          <div class="card-glass-specular"></div>
+          <div class="card-badge badge-accent">Хит продаж</div>
+          <div class="card-icon-wrapper ai-bg">🤖</div>
+          <h3 class="card-title">Chat GPT Plus</h3>
+          <p class="card-desc">Доступ к топовым флагманским моделям GPT-4o, o1, Canvas, генерации картинок и кастомным GPTs без ограничений.</p>
+          <div class="card-features">
+            <div class="feat-item"><span class="feat-check">✓</span> Подписка на 1 месяц (готовый аккаунт / на ваш профиль)</div>
+            <div class="feat-item"><span class="feat-check">✓</span> Максимальный приоритет скорости ответов</div>
+            <div class="feat-item"><span class="feat-check">✓</span> Полная гарантия на весь оплаченный период</div>
+          </div>
+          <div class="card-bottom">
+            <div class="price-wrap">
+              <span class="price-val">1 954 ₽</span>
+              <span class="price-period">/ 1 мес</span>
+            </div>
+            <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-card-action">
+              <span>Купить в боте</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Card: Claude 3.7 Sonnet -->
+        <div class="glass-card" data-category="ai">
+          <div class="card-glass-specular"></div>
+          <div class="card-badge">Для кода и аналитики</div>
+          <div class="card-icon-wrapper claude-bg">🧠</div>
+          <h3 class="card-title">Claude 3.7 Sonnet / Pro</h3>
+          <p class="card-desc">Признанный лидер среди AI для написания сложного кода, рефакторинга и работы с огромным контекстом в 200 000 токенов.</p>
+          <div class="card-features">
+            <div class="feat-item"><span class="feat-check">✓</span> Artifacts и интерактивные превью</div>
+            <div class="feat-item"><span class="feat-check">✓</span> Высокие лимиты запросов</div>
+          </div>
+          <div class="card-bottom">
+            <div class="price-wrap">
+              <span class="price-val">1 954 ₽</span>
+              <span class="price-period">/ 1 мес</span>
+            </div>
+            <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-card-action">
+              <span>Купить в боте</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Card: Gemini Pro -->
+        <div class="glass-card" data-category="ai">
+          <div class="card-glass-specular"></div>
+          <div class="card-badge badge-green">Суперцена</div>
+          <div class="card-icon-wrapper gemini-bg">✨</div>
+          <h3 class="card-title">Gemini Pro (18 месяцев)</h3>
+          <p class="card-desc">Мощная нейросеть Google с гигантским контекстом до 2 млн токенов. Идеально для работы с видео, PDF и книгами.</p>
+          <div class="card-features">
+            <div class="feat-item"><span class="feat-check">✓</span> Длительный срок доступа: 1.5 года</div>
+            <div class="feat-item"><span class="feat-check">✓</span> Безумная выгода по цене одной чашки кофе</div>
+          </div>
+          <div class="card-bottom">
+            <div class="price-wrap">
+              <span class="price-val">104 ₽</span>
+              <span class="price-period">/ 18 мес</span>
+            </div>
+            <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-card-action">
+              <span>Купить в боте</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Card: Steam Top-Up -->
+        <div class="glass-card" data-category="games">
+          <div class="card-glass-specular"></div>
+          <div class="card-badge">Мгновенно</div>
+          <div class="card-icon-wrapper steam-bg">🎮</div>
+          <h3 class="card-title">Пополнение Steam</h3>
+          <p class="card-desc">Прямое зачисление рублей на кошелек Steam для аккаунтов России (РФ), Казахстана, СНГ и других регионов.</p>
+          <div class="card-features">
+            <div class="feat-item"><span class="feat-check">✓</span> Нужен только логин аккаунта (без пароля)</div>
+            <div class="feat-item"><span class="feat-check">✓</span> Любая сумма от 100 до 15 000 ₽</div>
+          </div>
+          <div class="card-bottom">
+            <div class="price-wrap">
+              <span class="price-val">от 100 ₽</span>
+              <span class="price-period">по курсу</span>
+            </div>
+            <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-card-action">
+              <span>Пополнить</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Card: Spotify Premium -->
+        <div class="glass-card" data-category="media">
+          <div class="card-glass-specular"></div>
+          <div class="card-badge">Без ограничений</div>
+          <div class="card-icon-wrapper spotify-bg">🎵</div>
+          <h3 class="card-title">Spotify Premium</h3>
+          <p class="card-desc">Индивидуальная подписка на ваш личный аккаунт. Музыка без рекламы, пропуск треков и максимальный битрейт в РФ.</p>
+          <div class="card-features">
+            <div class="feat-item"><span class="feat-check">✓</span> Тарифы на 1, 3, 6 и 12 месяцев</div>
+            <div class="feat-item"><span class="feat-check">✓</span> Без необходимости постоянного VPN</div>
+          </div>
+          <div class="card-bottom">
+            <div class="price-wrap">
+              <span class="price-val">от 349 ₽</span>
+              <span class="price-period">/ период</span>
+            </div>
+            <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-card-action">
+              <span>Выбрать</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Card: Perplexity & CapCut -->
+        <div class="glass-card" data-category="ai">
+          <div class="card-glass-specular"></div>
+          <div class="card-badge">Инструменты</div>
+          <div class="card-icon-wrapper perplexity-bg">🔍</div>
+          <h3 class="card-title">Perplexity & CapCut Pro</h3>
+          <p class="card-desc">Умный AI-поиск со ссылками на первоисточники и профессиональный монтаж видео без водяных знаков.</p>
+          <div class="card-features">
+            <div class="feat-item"><span class="feat-check">✓</span> Доступ к GPT-4o и Claude внутри поиска</div>
+            <div class="feat-item"><span class="feat-check">✓</span> Премиум эффекты и автотитры CapCut</div>
+          </div>
+          <div class="card-bottom">
+            <div class="price-wrap">
+              <span class="price-val">в боте</span>
+              <span class="price-period">лучшие цены</span>
+            </div>
+            <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="btn-card-action">
+              <span>Открыть каталог</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="steps-section">
+      <div class="section-header">
+        <div class="section-tag">Простой процесс</div>
+        <h2 class="section-title">Как получить подписку за 3 шага</h2>
+      </div>
+
+      <div class="steps-grid">
+        <div class="step-card glass-card">
+          <div class="step-num">01</div>
+          <h4 class="step-title">Выберите товар</h4>
+          <p class="step-desc">Откройте Telegram-бота <b>@AtlasShopAI_bot</b> и выберите нужную подписку или сумму пополнения в каталоге.</p>
+        </div>
+
+        <div class="step-card glass-card">
+          <div class="step-num">02</div>
+          <h4 class="step-title">Оплатите удобным способом</h4>
+          <p class="step-desc">Пополните баланс в 1 клик через СБП, картой РФ (МИР, Т-Банк, Сбер) или криптовалютой через CryptoBot.</p>
+        </div>
+
+        <div class="step-card glass-card">
+          <div class="step-num">03</div>
+          <h4 class="step-title">Получите данные мгновенно</h4>
+          <p class="step-desc">Бот автоматически присылает готовый аккаунт, инвайт или код в диалог в течение 15–30 секунд.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Payment Methods Bar -->
+    <section class="payment-methods-section" id="guarantee">
+      <div class="glass-card payment-methods-card">
+        <div class="pay-text">
+          <div class="pay-tag">Способы оплаты</div>
+          <h3>Принимаем популярные платежные системы</h3>
+          <p>Все транзакции защищены протоколом шифрования. Моментальное зачисление средств на ваш баланс.</p>
+        </div>
+        <div class="pay-badges">
+          <div class="pay-badge"><span class="badge-icon">⚡</span> СБП (QR-код)</div>
+          <div class="pay-badge"><span class="badge-icon">💳</span> Карты РФ (МИР)</div>
+          <div class="pay-badge"><span class="badge-icon">🤖</span> CryptoBot (USDT)</div>
+          <div class="pay-badge"><span class="badge-icon">💎</span> TON & Криптовалюта</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Accordion Section -->
+    <section id="faq" class="faq-section">
+      <div class="section-header">
+        <div class="section-tag">Вопросы и ответы</div>
+        <h2 class="section-title">Часто задаваемые вопросы</h2>
+      </div>
+
+      <div class="faq-list">
+        <div class="faq-item glass-card">
+          <button class="faq-question">
+            <span>Нужна ли мне зарубежная банковская карта?</span>
+            <span class="faq-arrow">↓</span>
+          </button>
+          <div class="faq-answer">
+            <p>Нет! Все оплаты проходят в российских рублях через Систему быстрых платежей (СБП), банковские карты любых российских банков или криптовалюту в Telegram. Никаких зарубежных карт заводить не нужно.</p>
+          </div>
+        </div>
+
+        <div class="faq-item glass-card">
+          <button class="faq-question">
+            <span>Как быстро я получу купленный товар?</span>
+            <span class="faq-arrow">↓</span>
+          </button>
+          <div class="faq-answer">
+            <p>Выдача происходит автоматически ботом сразу после подтверждения оплаты. В 98% случаев готовые данные аккаунта или ссылка приходят в диалог в течение 15–30 секунд.</p>
+          </div>
+        </div>
+
+        <div class="faq-item glass-card">
+          <button class="faq-question">
+            <span>Какая действует гарантия?</span>
+            <span class="faq-arrow">↓</span>
+          </button>
+          <div class="faq-answer">
+            <p>На все цифровые товары действует полная гарантия на оплаченный срок подписки. Если у вас возникнут сложности со входом или работой сервиса, служба поддержки оперативно решит вопрос или произведёт замену/возврат средств.</p>
+          </div>
+        </div>
+
+        <div class="faq-item glass-card">
+          <button class="faq-question">
+            <span>Как связаться с поддержкой?</span>
+            <span class="faq-arrow">↓</span>
+          </button>
+          <div class="faq-answer">
+            <p>Вы можете написать напрямую в Telegram нашему менеджеру поддержки: <b>@V1sionHere</b>. Мы на связи каждый день и помогаем с любыми вопросами по активации.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Sticky Bottom Liquid Glass Dock -->
+  <div class="floating-dock-container">
+    <div class="floating-dock-glass">
+      <div class="dock-left">
+        <span class="dock-dot"></span>
+        <div class="dock-text">
+          <span class="dock-title">AtlasShop в Telegram</span>
+          <span class="dock-sub">Каталог открыт · Заказ за 15 сек</span>
+        </div>
+      </div>
+      <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="dock-cta">
+        <span>Запустить бота</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="footer-logo"> AtlasShop</span>
+        <p class="footer-desc">Премиальный сервис доступа к цифровым сервисам и нейросетям.</p>
+      </div>
+
+      <div class="footer-links">
+        <div class="footer-col">
+          <span class="footer-col-title">Навигация</span>
+          <a href="#catalog">Каталог</a>
+          <a href="#how-it-works">Как работает</a>
+          <a href="#faq">Вопросы и ответы</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Документы</span>
+          <a href="https://telegra.ph/PUBLICHNAYA-OFERTA-08-12-15" target="_blank" rel="noopener">Публичная оферта</a>
+          <a href="https://telegra.ph/POLITIKA-KONFIDENCIALNOSTI-08-12-99" target="_blank" rel="noopener">Конфиденциальность</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">Поддержка</span>
+          <a href="https://t.me/V1sionHere" target="_blank" rel="noopener">Менеджер поддержки (@V1sionHere)</a>
+          <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener">Бот @AtlasShopAI_bot</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 AtlasShop. Все права защищены. Сервис не аффилирован с OpenAI, Anthropic или Google.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
