@@ -1,6 +1,11 @@
 // AtlasShop Interactive App Scripts
 document.addEventListener("DOMContentLoaded", () => {
 
+  // Передаём источник перехода в Telegram для дальнейшей аналитики.
+  document.querySelectorAll('a[href="https://t.me/AtlasShopAI_bot"]').forEach(link => {
+    link.setAttribute("href", "https://t.me/AtlasShopAI_bot?start=landing");
+  });
+
   // 1. Category Filter Tabs
   const tabButtons = document.querySelectorAll(".tab-btn");
   const cards = document.querySelectorAll(".bento-grid .glass-card");
@@ -9,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       tabButtons.forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      tabButtons.forEach(b => b.setAttribute("aria-selected", String(b === btn)));
 
       const filter = btn.getAttribute("data-filter");
 
@@ -37,6 +43,8 @@ document.addEventListener("DOMContentLoaded", () => {
       // Close all others
       faqItems.forEach(other => {
         other.classList.remove("active");
+        const otherQuestion = other.querySelector(".faq-question");
+        if (otherQuestion) otherQuestion.setAttribute("aria-expanded", "false");
         const otherAnswer = other.querySelector(".faq-answer");
         if (otherAnswer) otherAnswer.style.maxHeight = null;
       });
@@ -44,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Toggle current
       if (!isActive) {
         item.classList.add("active");
+        questionBtn.setAttribute("aria-expanded", "true");
         answer.style.maxHeight = answer.scrollHeight + "px";
       } else {
         item.classList.remove("active");

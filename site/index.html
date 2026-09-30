@@ -4,7 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>AtlasShop — Подписки на нейросети и цифровые сервисы</title>
-  <meta name="description" content="Магазин подписок ChatGPT Plus, Claude Pro, Gemini Pro, Spotify и пополнения Steam за рубли без зарубежных карт. Моментальная выдача в Telegram.">
+  <meta name="description" content="AtlasShop — подписки на нейросети, цифровые сервисы и пополнение Steam. Каталог и заказ в Telegram-боте.">
+  <meta name="theme-color" content="#070709">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="AtlasShop — цифровые подписки в Telegram">
+  <meta property="og:description" content="ChatGPT, Claude, Gemini, Spotify и Steam. Выберите товар и оформите заказ в боте.">
+  <meta property="og:locale" content="ru_RU">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -23,7 +28,7 @@
   <header class="site-header">
     <nav class="nav-glass">
       <a href="#" class="brand">
-        <span class="brand-apple-icon"></span>
+        <span class="brand-apple-icon">A</span>
         <span class="brand-name">AtlasShop</span>
         <span class="brand-badge">Telegram Store</span>
       </a>
@@ -58,7 +63,7 @@
 
         <p class="hero-description">
           Подписки ChatGPT Plus, Claude Pro, Gemini Pro, Spotify и пополнение Steam.
-          Оплата через СБП, российские карты или криптовалюту. Моментальная выдача в боте от 15 секунд.
+          Оплата доступным способом в боте и автоматическая выдача цифровых товаров после подтверждения платежа.
         </p>
 
         <div class="hero-cta-group">
@@ -78,18 +83,18 @@
         <!-- Trust Metrics Ribbon -->
         <div class="trust-ribbon">
           <div class="trust-item">
-            <span class="trust-val">15 сек</span>
-            <span class="trust-lbl">средняя скорость выдачи</span>
+            <span class="trust-val">Авто</span>
+            <span class="trust-lbl">выдача после оплаты</span>
           </div>
           <div class="trust-sep"></div>
           <div class="trust-item">
-            <span class="trust-val">100%</span>
-            <span class="trust-lbl">гарантия на весь период</span>
+            <span class="trust-val">Понятно</span>
+            <span class="trust-lbl">условия до оплаты</span>
           </div>
           <div class="trust-sep"></div>
           <div class="trust-item">
-            <span class="trust-val">0 ₽</span>
-            <span class="trust-lbl">скрытых комиссий сервиса</span>
+            <span class="trust-val">1 бот</span>
+            <span class="trust-lbl">каталог, оплата и поддержка</span>
           </div>
         </div>
       </div>
@@ -100,16 +105,16 @@
       <div class="section-header">
         <div class="section-tag">Каталог тарифов</div>
         <h2 class="section-title">Всё необходимое в одном месте</h2>
-        <p class="section-subtitle">Подписки и мгновенное пополнение с гарантией работы</p>
+        <p class="section-subtitle">Подписки и пополнение Steam. Актуальная цена и доступные способы оплаты — в боте.</p>
       </div>
 
       <!-- Filter Tabs with sliding pill -->
       <div class="filter-tabs-wrapper">
         <div class="filter-tabs-glass" id="filter-tabs">
-          <button class="tab-btn active" data-filter="all">Все товары</button>
-          <button class="tab-btn" data-filter="ai">🤖 Нейросети (AI)</button>
-          <button class="tab-btn" data-filter="media">🎬 Мультимедиа</button>
-          <button class="tab-btn" data-filter="games">🎮 Steam & Игры</button>
+          <button class="tab-btn active" type="button" aria-selected="true" data-filter="all">Все товары</button>
+          <button class="tab-btn" type="button" aria-selected="false" data-filter="ai">🤖 Нейросети (AI)</button>
+          <button class="tab-btn" type="button" aria-selected="false" data-filter="media">🎬 Мультимедиа</button>
+          <button class="tab-btn" type="button" aria-selected="false" data-filter="games">🎮 Steam & Игры</button>
         </div>
       </div>
 
@@ -275,13 +280,13 @@
         <div class="step-card glass-card">
           <div class="step-num">02</div>
           <h4 class="step-title">Оплатите удобным способом</h4>
-          <p class="step-desc">Пополните баланс в 1 клик через СБП, картой РФ (МИР, Т-Банк, Сбер) или криптовалютой через CryptoBot.</p>
+          <p class="step-desc">Выберите доступный способ оплаты внутри бота. Сейчас можно использовать CryptoBot; карты и СБП появятся после подключения эквайринга.</p>
         </div>
 
         <div class="step-card glass-card">
           <div class="step-num">03</div>
           <h4 class="step-title">Получите данные мгновенно</h4>
-          <p class="step-desc">Бот автоматически присылает готовый аккаунт, инвайт или код в диалог в течение 15–30 секунд.</p>
+          <p class="step-desc">Бот автоматически присылает готовый аккаунт, инвайт или код в диалог после подтверждения оплаты.</p>
         </div>
       </div>
     </section>
@@ -292,13 +297,13 @@
         <div class="pay-text">
           <div class="pay-tag">Способы оплаты</div>
           <h3>Принимаем популярные платежные системы</h3>
-          <p>Все транзакции защищены протоколом шифрования. Моментальное зачисление средств на ваш баланс.</p>
+          <p>Доступные способы оплаты показываются внутри бота перед подтверждением заказа. Сейчас работает CryptoBot; карты и СБП подключаются по мере готовности эквайринга.</p>
         </div>
         <div class="pay-badges">
-          <div class="pay-badge"><span class="badge-icon">⚡</span> СБП (QR-код)</div>
-          <div class="pay-badge"><span class="badge-icon">💳</span> Карты РФ (МИР)</div>
-          <div class="pay-badge"><span class="badge-icon">🤖</span> CryptoBot (USDT)</div>
-          <div class="pay-badge"><span class="badge-icon">💎</span> TON & Криптовалюта</div>
+          <div class="pay-badge"><span class="badge-icon">🤖</span> CryptoBot</div>
+          <div class="pay-badge"><span class="badge-icon">💎</span> USDT · TON · BTC</div>
+          <div class="pay-badge"><span class="badge-icon">⚡</span> Карты и СБП — скоро</div>
+          <div class="pay-badge"><span class="badge-icon">🔒</span> Заказ в Telegram</div>
         </div>
       </div>
     </section>
@@ -312,41 +317,41 @@
 
       <div class="faq-list">
         <div class="faq-item glass-card">
-          <button class="faq-question">
+          <button class="faq-question" type="button" aria-expanded="false" aria-controls="faq-answer-1">
             <span>Нужна ли мне зарубежная банковская карта?</span>
             <span class="faq-arrow">↓</span>
           </button>
-          <div class="faq-answer">
-            <p>Нет! Все оплаты проходят в российских рублях через Систему быстрых платежей (СБП), банковские карты любых российских банков или криптовалюту в Telegram. Никаких зарубежных карт заводить не нужно.</p>
+          <div class="faq-answer" id="faq-answer-1">
+            <p>Нет. Откройте бота и посмотрите доступные способы оплаты для выбранного товара. Для криптовалюты работает CryptoBot; карты и СБП появятся после подключения эквайринга.</p>
           </div>
         </div>
 
         <div class="faq-item glass-card">
-          <button class="faq-question">
+          <button class="faq-question" type="button" aria-expanded="false" aria-controls="faq-answer-2">
             <span>Как быстро я получу купленный товар?</span>
             <span class="faq-arrow">↓</span>
           </button>
-          <div class="faq-answer">
-            <p>Выдача происходит автоматически ботом сразу после подтверждения оплаты. В 98% случаев готовые данные аккаунта или ссылка приходят в диалог в течение 15–30 секунд.</p>
+          <div class="faq-answer" id="faq-answer-2">
+            <p>Выдача запускается автоматически после подтверждения оплаты. Обычно данные аккаунта, инвайт или код приходят прямо в диалог с ботом; если нужна дополнительная проверка, бот покажет статус заказа.</p>
           </div>
         </div>
 
         <div class="faq-item glass-card">
-          <button class="faq-question">
+          <button class="faq-question" type="button" aria-expanded="false" aria-controls="faq-answer-3">
             <span>Какая действует гарантия?</span>
             <span class="faq-arrow">↓</span>
           </button>
-          <div class="faq-answer">
+          <div class="faq-answer" id="faq-answer-3">
             <p>На все цифровые товары действует полная гарантия на оплаченный срок подписки. Если у вас возникнут сложности со входом или работой сервиса, служба поддержки оперативно решит вопрос или произведёт замену/возврат средств.</p>
           </div>
         </div>
 
         <div class="faq-item glass-card">
-          <button class="faq-question">
+          <button class="faq-question" type="button" aria-expanded="false" aria-controls="faq-answer-4">
             <span>Как связаться с поддержкой?</span>
             <span class="faq-arrow">↓</span>
           </button>
-          <div class="faq-answer">
+          <div class="faq-answer" id="faq-answer-4">
             <p>Вы можете написать напрямую в Telegram нашему менеджеру поддержки: <b>@V1sionHere</b>. Мы на связи каждый день и помогаем с любыми вопросами по активации.</p>
           </div>
         </div>
@@ -361,7 +366,7 @@
         <span class="dock-dot"></span>
         <div class="dock-text">
           <span class="dock-title">AtlasShop в Telegram</span>
-          <span class="dock-sub">Каталог открыт · Заказ за 15 сек</span>
+          <span class="dock-sub">Каталог открыт · автоматическая выдача</span>
         </div>
       </div>
       <a href="https://t.me/AtlasShopAI_bot" target="_blank" rel="noopener" class="dock-cta">
@@ -375,7 +380,7 @@
   <footer class="site-footer">
     <div class="footer-container">
       <div class="footer-brand">
-        <span class="footer-logo"> AtlasShop</span>
+        <span class="footer-logo">A AtlasShop</span>
         <p class="footer-desc">Премиальный сервис доступа к цифровым сервисам и нейросетям.</p>
       </div>
 
