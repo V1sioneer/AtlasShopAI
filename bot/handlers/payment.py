@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import structlog
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -15,9 +13,11 @@ from aiogram.types import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import User
-from bot.db.repo import DepositRepo, TransactionRepo, UserRepo
+from bot.db.repo import DepositRepo
 from bot.services.payments import CryptoBotPayment, YooKassaPayment
+from bot.services.settlement import InvalidPayment, expire_payment, settle_payment
 from bot.utils.formatting import format_price
+from bot.utils.money import topup_amount
 
 logger = structlog.get_logger()
 
@@ -83,16 +83,10 @@ async def cb_topup_custom(callback: CallbackQuery, state: FSMContext) -> None:
 async def process_topup_amount(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     try:
-        amount = float(text)
-    except ValueError:
-        await message.answer("❌ Введите число.")
+        amount = topup_amount(text)
+    except ValueError as exc:
+        await message.answer(f"❌ {exc}.")
         return
-
-    if amount < 50 or amount > 50000:
-        await message.answer("❌ Сумма от 50 до 50000 ₽.")
-        return
-
-    amount = math.ceil(amount)
     await state.clear()
     await _show_payment_methods(message, amount)
 
@@ -102,7 +96,11 @@ async def process_topup_amount(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("topup_amount:"))
 async def cb_topup_amount(callback: CallbackQuery) -> None:
-    amount = int(callback.data.split(":")[1])  # type: ignore[union-attr]
+    try:
+        amount = topup_amount(callback.data.split(":")[1])  # type: ignore[union-attr]
+    except (ValueError, IndexError):
+        await callback.answer("Некорректная сумма", show_alert=True)
+        return
     await _show_payment_methods_edit(callback, amount)
     await callback.answer()
 
@@ -168,7 +166,11 @@ async def cb_pay_crypto(
         await callback.answer()
         return
 
-    amount = int(callback.data.split(":")[1])  # type: ignore[union-attr]
+    try:
+        amount = topup_amount(callback.data.split(":")[1])  # type: ignore[union-attr]
+    except (ValueError, IndexError):
+        await callback.answer("Некорректная сумма", show_alert=True)
+        return
 
     try:
         invoice = await cryptobot.create_invoice(
@@ -224,7 +226,7 @@ async def cb_pay_crypto(
                 [InlineKeyboardButton(text="💰 Оплатить", url=invoice["pay_url"])],
                 [InlineKeyboardButton(
                     text="🔄 Проверить оплату",
-                    callback_data=f"check_crypto:{invoice['invoice_id']}:{amount}",
+                    callback_data=f"check_crypto:{invoice['invoice_id']}",
                 )],
             ]
         ),
@@ -244,9 +246,11 @@ async def cb_check_crypto(
         await callback.answer("CryptoBot не настроен", show_alert=True)
         return
 
-    parts = callback.data.split(":")  # type: ignore[union-attr]
-    invoice_id = int(parts[1])
-    amount = int(parts[2])
+    try:
+        invoice_id = int(callback.data.split(":", 2)[1])  # type: ignore[union-attr]
+    except (ValueError, IndexError):
+        await callback.answer("Некорректный идентификатор платежа", show_alert=True)
+        return
 
     try:
         invoice = await cryptobot.get_invoice(invoice_id)
@@ -255,19 +259,15 @@ async def cb_check_crypto(
         return
 
     if invoice["status"] == "paid":
-        dep_repo = DepositRepo(session)
-        dep = await dep_repo.get_by_external_id(str(invoice_id))
-        if dep and dep.status == "pending":
-            await dep_repo.mark_paid(dep.id)
-            user_repo = UserRepo(session)
-            new_balance = await user_repo.update_balance(db_user.id, amount)
-            tx_repo = TransactionRepo(session)
-            await tx_repo.create(
-                user_id=db_user.id,
-                delta=amount,
-                reason=f"Пополнение CryptoBot #{invoice_id}",
+        try:
+            settlement = await settle_payment(
+                session, "cryptobot", str(invoice_id), invoice, user_id=db_user.id,
             )
-            await session.commit()
+        except InvalidPayment as exc:
+            logger.warning("cryptobot_settlement_rejected", invoice_id=invoice_id, error=str(exc))
+            await callback.answer("Платёж не прошёл проверку. Обратитесь в поддержку.", show_alert=True)
+            return
+        if settlement.applied:
 
             # Notify admins
             if callback.bot:
@@ -280,8 +280,8 @@ async def cb_check_crypto(
                             f"💰 <b>ПОПОЛНЕНИЕ БАЛАНСА!</b>\n\n"
                             f"👤 Пользователь: <b>{name}</b> ({uname})\n"
                             f"🆔 ID: <code>{db_user.id}</code>\n"
-                            f"💵 Зачислено: <b>+{format_price(amount)}</b>\n"
-                            f"📈 Новый баланс: <b>{format_price(new_balance)}</b>\n"
+                            f"💵 Зачислено: <b>+{format_price(settlement.amount)}</b>\n"
+                            f"📈 Новый баланс: <b>{format_price(settlement.balance)}</b>\n"
                             f"🤖 Способ: CryptoBot",
                             parse_mode="HTML",
                         )
@@ -290,16 +290,19 @@ async def cb_check_crypto(
 
             await callback.message.edit_text(  # type: ignore[union-attr]
                 f"✅ <b>Оплата получена!</b>\n\n"
-                f"Зачислено: {format_price(amount)}\n"
-                f"Баланс: {format_price(new_balance)}",
+                f"Зачислено: {format_price(settlement.amount)}\n"
+                f"Баланс: {format_price(settlement.balance)}",
                 parse_mode="HTML",
             )
         else:
             await callback.answer("✅ Уже зачислено!", show_alert=True)
+            return
     elif invoice["status"] == "expired":
+        await expire_payment(session, "cryptobot", str(invoice_id))
         await callback.message.edit_text("❌ Счёт истёк. Создайте новый.")  # type: ignore[union-attr]
     else:
         await callback.answer("⏳ Оплата ещё не получена. Подождите.", show_alert=True)
+        return
 
     await callback.answer()
 
@@ -323,7 +326,11 @@ async def cb_pay_yookassa(
         await callback.answer()
         return
 
-    amount = int(callback.data.split(":")[1])  # type: ignore[union-attr]
+    try:
+        amount = topup_amount(callback.data.split(":")[1])  # type: ignore[union-attr]
+    except (ValueError, IndexError):
+        await callback.answer("Некорректная сумма", show_alert=True)
+        return
 
     try:
         payment = await yookassa.create_payment(
@@ -361,7 +368,7 @@ async def cb_pay_yookassa(
                 [InlineKeyboardButton(text="💳 Оплатить", url=payment["confirmation_url"])],
                 [InlineKeyboardButton(
                     text="🔄 Проверить оплату",
-                    callback_data=f"check_yookassa:{payment['payment_id']}:{amount}",
+                    callback_data=f"check_yookassa:{payment['payment_id']}",
                 )],
             ]
         ),
@@ -380,9 +387,13 @@ async def cb_check_yookassa(
         await callback.answer("ЮKassa не настроена", show_alert=True)
         return
 
-    parts = callback.data.split(":")  # type: ignore[union-attr]
-    payment_id = parts[1]
-    amount = int(parts[2])
+    try:
+        payment_id = callback.data.split(":", 2)[1]  # type: ignore[union-attr]
+        if not payment_id:
+            raise ValueError
+    except (ValueError, IndexError):
+        await callback.answer("Некорректный идентификатор платежа", show_alert=True)
+        return
 
     try:
         payment = await yookassa.get_payment(payment_id)
@@ -391,31 +402,30 @@ async def cb_check_yookassa(
         return
 
     if payment["status"] == "succeeded":
-        dep_repo = DepositRepo(session)
-        dep = await dep_repo.get_by_external_id(payment_id)
-        if dep and dep.status == "pending":
-            await dep_repo.mark_paid(dep.id)
-            user_repo = UserRepo(session)
-            new_balance = await user_repo.update_balance(db_user.id, amount)
-            tx_repo = TransactionRepo(session)
-            await tx_repo.create(
-                user_id=db_user.id,
-                delta=amount,
-                reason=f"Пополнение ЮKassa #{payment_id[:8]}",
+        try:
+            settlement = await settle_payment(
+                session, "yookassa", payment_id, payment, user_id=db_user.id,
             )
-            await session.commit()
+        except InvalidPayment as exc:
+            logger.warning("yookassa_settlement_rejected", payment_id=payment_id, error=str(exc))
+            await callback.answer("Платёж не прошёл проверку. Обратитесь в поддержку.", show_alert=True)
+            return
+        if settlement.applied:
 
             await callback.message.edit_text(  # type: ignore[union-attr]
                 f"✅ <b>Оплата получена!</b>\n\n"
-                f"Зачислено: {format_price(amount)}\n"
-                f"Баланс: {format_price(new_balance)}",
+                f"Зачислено: {format_price(settlement.amount)}\n"
+                f"Баланс: {format_price(settlement.balance)}",
                 parse_mode="HTML",
             )
         else:
             await callback.answer("✅ Уже зачислено!", show_alert=True)
+            return
     elif payment["status"] == "canceled":
+        await expire_payment(session, "yookassa", payment_id)
         await callback.message.edit_text("❌ Платёж отменён.")  # type: ignore[union-attr]
     else:
         await callback.answer("⏳ Оплата ещё не получена. Подождите.", show_alert=True)
+        return
 
     await callback.answer()

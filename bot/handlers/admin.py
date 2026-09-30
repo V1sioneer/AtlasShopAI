@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.db.repo import PartnerDepositRepo, UserRepo, TransactionRepo
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
 from bot.utils.formatting import format_price
+from bot.utils.money import money
 
 logger = structlog.get_logger()
 
@@ -105,7 +106,7 @@ async def cmd_set_markup(
         return
 
     try:
-        new_val = float(args[1].replace("%", ""))
+        new_val = float(money(args[1].replace("%", "")))
         if new_val < 0 or new_val > 500:
             await message.answer("❌ Наценка должна быть от 0% до 500%.")
             return
@@ -202,7 +203,7 @@ async def cmd_topup_user(
 
     try:
         tg_id = int(args[1])
-        amount = float(args[2])
+        amount = float(money(args[2]))
     except ValueError:
         await message.answer("❌ Неверные аргументы.")
         return
@@ -262,7 +263,9 @@ async def cmd_deposit_crypto(
         return
 
     try:
-        amount_rub = float(args[1])
+        amount_rub = float(money(args[1]))
+        if amount_rub <= 0:
+            raise ValueError
     except ValueError:
         await message.answer("❌ Неверная сумма.")
         return
@@ -312,7 +315,9 @@ async def cmd_deposit_ton(
         return
 
     try:
-        amount_rub = float(args[1])
+        amount_rub = float(money(args[1]))
+        if amount_rub <= 0:
+            raise ValueError
     except ValueError:
         await message.answer("❌ Неверная сумма.")
         return

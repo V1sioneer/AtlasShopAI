@@ -195,13 +195,13 @@ def confirm_purchase_kb(product_id: int, qty: int) -> InlineKeyboardMarkup:
 
 
 
-def confirm_external_kb(action: str, params: str) -> InlineKeyboardMarkup:
+def confirm_external_kb(action: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Подтвердить",
-                    callback_data=f"confirm_ext:{action}:{params}",
+                    callback_data=f"confirm_ext:{action}",
                 ),
                 InlineKeyboardButton(
                     text="❌ Отмена",

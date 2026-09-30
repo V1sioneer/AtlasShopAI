@@ -6,6 +6,8 @@ import json
 import uuid
 from typing import Optional
 
+from bot.utils.money import money
+
 import httpx
 import structlog
 
@@ -36,6 +38,9 @@ class CryptoBotPayment:
         payload: str = "",
     ) -> dict:
         """Create a payment invoice. Returns dict with invoice_id, pay_url, etc."""
+        amount = money(amount)
+        if amount <= 0:
+            raise ValueError("Некорректная сумма")
         resp = await self._client.post(
             "/createInvoice",
             json={
@@ -55,6 +60,7 @@ class CryptoBotPayment:
             "invoice_id": result["invoice_id"],
             "pay_url": result["pay_url"],
             "amount": float(result["amount"]),
+            "currency": result.get("fiat") or result.get("asset"),
             "status": result["status"],
         }
 
@@ -72,6 +78,7 @@ class CryptoBotPayment:
             "invoice_id": inv["invoice_id"],
             "status": inv["status"],  # active | paid | expired
             "amount": float(inv["amount"]),
+            "currency": inv.get("fiat") or inv.get("asset"),
             "payload": inv.get("payload", ""),
         }
 
@@ -108,6 +115,9 @@ class YooKassaPayment:
     ) -> dict:
         """Create a payment. Returns dict with payment_id, confirmation_url."""
         idempotence_key = str(uuid.uuid4())
+        amount = money(amount)
+        if amount <= 0:
+            raise ValueError("Некорректная сумма")
         resp = await self._client.post(
             "/payments",
             headers={"Idempotence-Key": idempotence_key},
@@ -143,5 +153,6 @@ class YooKassaPayment:
             "payment_id": data["id"],
             "status": data["status"],  # pending | waiting_for_capture | succeeded | canceled
             "amount": float(data["amount"]["value"]),
+            "currency": data["amount"]["currency"],
             "metadata": data.get("metadata", {}),
         }

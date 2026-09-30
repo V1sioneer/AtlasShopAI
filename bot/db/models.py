@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -61,6 +62,8 @@ class User(Base):
 
 class Order(Base):
     __tablename__ = "orders"
+
+    request_key: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
@@ -132,6 +135,9 @@ class GameProduct(Base):
 class Deposit(Base):
     """User balance top-up via payment gateways."""
     __tablename__ = "deposits"
+    __table_args__ = (
+        UniqueConstraint("method", "external_id", name="uq_deposits_method_external_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)

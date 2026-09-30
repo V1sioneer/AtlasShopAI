@@ -10,6 +10,7 @@ from bot.db.models import OrderStatus
 from bot.db.repo import DepositRepo, OrderRepo, PartnerDepositRepo, TransactionRepo, UserRepo
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
 from bot.services.payments import CryptoBotPayment, YooKassaPayment
+from bot.services.settlement import InvalidPayment, expire_payment, settle_payment
 from bot.utils.formatting import format_price
 
 logger = structlog.get_logger()
@@ -84,21 +85,20 @@ async def poll_external_orders(
                         )
 
                     elif new_status == "failed":
-                        # Refund user
-                        user_repo = UserRepo(session)
-                        tx_repo = TransactionRepo(session)
-
-                        await user_repo.update_balance(
-                            order.user_id, order.user_price
+                        refunded = await order_repo.transition(
+                            order.id,
+                            [OrderStatus.PROCESSING],
+                            OrderStatus.FAILED,
                         )
-                        await tx_repo.create(
+                        if not refunded:
+                            await session.rollback()
+                            continue
+                        await UserRepo(session).update_balance(order.user_id, order.user_price)
+                        await TransactionRepo(session).create(
                             user_id=order.user_id,
                             delta=order.user_price,
                             reason="Возврат: заказ не выполнен",
                             order_id=order.id,
-                        )
-                        await order_repo.update_status(
-                            order.id, OrderStatus.FAILED
                         )
                         await session.commit()
 
@@ -247,9 +247,6 @@ async def poll_user_deposits(
 
             async with session_factory() as session:
                 dep_repo = DepositRepo(session)
-                user_repo = UserRepo(session)
-                tx_repo = TransactionRepo(session)
-
                 # 1. CryptoBot
                 if cryptobot:
                     crypto_deps = await dep_repo.get_pending_by_method("cryptobot")
@@ -259,21 +256,18 @@ async def poll_user_deposits(
                         try:
                             invoice = await cryptobot.get_invoice(int(dep.external_id))
                             if invoice["status"] == "paid":
-                                await dep_repo.mark_paid(dep.id)
-                                new_bal = await user_repo.update_balance(dep.user_id, dep.amount_rub)
-                                await tx_repo.create(
-                                    user_id=dep.user_id,
-                                    delta=dep.amount_rub,
-                                    reason=f"Пополнение CryptoBot #{dep.external_id}",
+                                settlement = await settle_payment(
+                                    session, "cryptobot", dep.external_id, invoice,
                                 )
-                                await session.commit()
+                                if not settlement.applied:
+                                    continue
 
                                 try:
                                     await bot.send_message(
-                                        dep.user_id,
+                                        settlement.user_id,
                                         f"✅ <b>Оплата получена!</b>\n\n"
-                                        f"Зачислено: {format_price(dep.amount_rub)}\n"
-                                        f"Текущий баланс: {format_price(new_bal)}",
+                                        f"Зачислено: {format_price(settlement.amount)}\n"
+                                        f"Текущий баланс: {format_price(settlement.balance)}",
                                         parse_mode="HTML",
                                     )
                                 except Exception:
@@ -285,14 +279,18 @@ async def poll_user_deposits(
                                             await bot.send_message(
                                                 aid,
                                                 f"💰 <b>АВТО-ПОПОЛНЕНИЕ БАЛАНСА!</b>\n\n"
-                                                f"👤 Пользователь ID: <code>{dep.user_id}</code>\n"
-                                                f"💵 Зачислено: <b>+{format_price(dep.amount_rub)}</b>\n"
-                                                f"📈 Новый баланс: <b>{format_price(new_bal)}</b>\n"
+                                                f"👤 Пользователь ID: <code>{settlement.user_id}</code>\n"
+                                                f"💵 Зачислено: <b>+{format_price(settlement.amount)}</b>\n"
+                                                f"📈 Новый баланс: <b>{format_price(settlement.balance)}</b>\n"
                                                 f"🤖 Способ: CryptoBot",
                                                 parse_mode="HTML",
                                             )
                                         except Exception:
                                             pass
+                            elif invoice["status"] == "expired":
+                                await expire_payment(session, "cryptobot", dep.external_id)
+                        except InvalidPayment as e:
+                            logger.warning("poll_cryptobot_rejected", error=str(e), dep_id=dep.id)
                         except Exception as e:
                             logger.debug("poll_cryptobot_err", error=str(e), dep_id=dep.id)
 
@@ -305,21 +303,18 @@ async def poll_user_deposits(
                         try:
                             payment = await yookassa.get_payment(dep.external_id)
                             if payment["status"] == "succeeded":
-                                await dep_repo.mark_paid(dep.id)
-                                new_bal = await user_repo.update_balance(dep.user_id, dep.amount_rub)
-                                await tx_repo.create(
-                                    user_id=dep.user_id,
-                                    delta=dep.amount_rub,
-                                    reason=f"Пополнение ЮKassa #{dep.external_id[:8]}",
+                                settlement = await settle_payment(
+                                    session, "yookassa", dep.external_id, payment,
                                 )
-                                await session.commit()
+                                if not settlement.applied:
+                                    continue
 
                                 try:
                                     await bot.send_message(
-                                        dep.user_id,
+                                        settlement.user_id,
                                         f"✅ <b>Оплата получена!</b>\n\n"
-                                        f"Зачислено: {format_price(dep.amount_rub)}\n"
-                                        f"Текущий баланс: {format_price(new_bal)}",
+                                        f"Зачислено: {format_price(settlement.amount)}\n"
+                                        f"Текущий баланс: {format_price(settlement.balance)}",
                                         parse_mode="HTML",
                                     )
                                 except Exception:
@@ -331,14 +326,18 @@ async def poll_user_deposits(
                                             await bot.send_message(
                                                 aid,
                                                 f"💰 <b>АВТО-ПОПОЛНЕНИЕ БАЛАНСА!</b>\n\n"
-                                                f"👤 Пользователь ID: <code>{dep.user_id}</code>\n"
-                                                f"💵 Зачислено: <b>+{format_price(dep.amount_rub)}</b>\n"
-                                                f"📈 Новый баланс: <b>{format_price(new_bal)}</b>\n"
-                                                f"🤖 Способ: CryptoBot",
+                                                f"👤 Пользователь ID: <code>{settlement.user_id}</code>\n"
+                                                f"💵 Зачислено: <b>+{format_price(settlement.amount)}</b>\n"
+                                                f"📈 Новый баланс: <b>{format_price(settlement.balance)}</b>\n"
+                                                f"💳 Способ: ЮKassa",
                                                 parse_mode="HTML",
                                             )
                                         except Exception:
                                             pass
+                            elif payment["status"] == "canceled":
+                                await expire_payment(session, "yookassa", dep.external_id)
+                        except InvalidPayment as e:
+                            logger.warning("poll_yookassa_rejected", error=str(e), dep_id=dep.id)
                         except Exception as e:
                             logger.debug("poll_yookassa_err", error=str(e), dep_id=dep.id)
 

@@ -9,9 +9,17 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.models import User
+from bot.db.models import OrderType, User
 from bot.keyboards.kb import confirm_external_kb, steam_games_menu_kb
-from bot.services.partner_api import PartnerAPIClient
+from bot.services.orders import (
+    DuplicateOrder,
+    InsufficientUserBalance,
+    OrderOutcomeUnknown,
+    OrderService,
+)
+from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
+from bot.services.pricing import calculate_user_price
+from bot.utils.money import money
 from bot.utils.formatting import format_price
 
 logger = structlog.get_logger()
@@ -24,6 +32,7 @@ STEAM_LOGIN_RE = re.compile(r"^[a-zA-Z0-9_]{2,64}$")
 class SteamBuyState(StatesGroup):
     waiting_login = State()
     waiting_amount = State()
+    confirming = State()
 
 
 class GameBuyState(StatesGroup):
@@ -86,7 +95,10 @@ async def process_steam_amount(
 ) -> None:
     text = (message.text or "").strip()
     try:
-        amount = float(text)
+        amount_decimal = money(text)
+        amount = int(amount_decimal)
+        if amount_decimal != amount:
+            raise ValueError
     except ValueError:
         await message.answer("❌ Введите число.")
         return
@@ -99,17 +111,95 @@ async def process_steam_amount(
 
     data = await state.get_data()
     login = data["login"]
-    await state.clear()
+    await state.update_data(amount=amount)
+    await state.set_state(SteamBuyState.confirming)
+    user_price = calculate_user_price(amount, markup_percent)
 
     await message.answer(
         f"💳 <b>Подтверждение пополнения Steam</b>\n\n"
         f"Логин: {login}\n"
-        f"Сумма: {int(amount)} ₽\n\n"
-        f"Цена будет рассчитана при оформлении.\n"
+        f"На аккаунт Steam: {amount} ₽\n"
+        f"К оплате с баланса: <b>{format_price(user_price)}</b>\n\n"
         f"Подтвердить?",
         parse_mode="HTML",
-        reply_markup=confirm_external_kb("steam", f"{login}:{int(amount)}"),
+        reply_markup=confirm_external_kb("steam"),
     )
+
+
+@router.callback_query(F.data == "confirm_ext:steam", SteamBuyState.confirming)
+async def cb_confirm_steam(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+    api: PartnerAPIClient,
+    markup_percent: float,
+    admin_ids: list[int],
+) -> None:
+    data = await state.get_data()
+    login = data.get("login")
+    amount = data.get("amount")
+    if not isinstance(login, str) or not isinstance(amount, int):
+        await state.clear()
+        await callback.answer("Сессия оформления истекла. Начните заново.", show_alert=True)
+        return
+    user_price = calculate_user_price(amount, markup_percent)
+    request_key = (
+        f"steam:{db_user.id}:{callback.message.chat.id}:"
+        f"{callback.message.message_id}:{login}:{amount}"
+    )
+    service = OrderService(session, api, markup_percent)
+    try:
+        result, local_order_id = await service.buy_external(
+            user_id=db_user.id,
+            order_type=OrderType.STEAM,
+            user_price=user_price,
+            partner_price=float(amount),
+            api_call=lambda: api.buy_steam(login, float(amount)),
+            product_name=f"Steam {login}: {amount} ₽",
+            request_key=request_key,
+            payload={"login": login, "amount_rub": amount},
+        )
+    except InsufficientUserBalance as exc:
+        await callback.answer(str(exc), show_alert=True)
+        return
+    except DuplicateOrder:
+        await state.clear()
+        await callback.answer("Этот заказ уже отправлен на обработку.", show_alert=True)
+        return
+    except OrderOutcomeUnknown:
+        await state.clear()
+        await callback.message.edit_text(
+            "⚠️ Статус пополнения уточняется. Средства закреплены за заказом; "
+            "повторно оформлять его не нужно."
+        )  # type: ignore[union-attr]
+        for admin_id in admin_ids:
+            try:
+                await callback.bot.send_message(  # type: ignore[union-attr]
+                    admin_id,
+                    f"⚠️ Неопределённое пополнение Steam: пользователь {db_user.id}, "
+                    f"логин {login}, сумма {amount} ₽",
+                )
+            except Exception:
+                pass
+        await callback.answer()
+        return
+    except PartnerAPIError as exc:
+        await state.clear()
+        await callback.message.edit_text(f"❌ Пополнение не выполнено: {exc.message}")  # type: ignore[union-attr]
+        await callback.answer()
+        return
+
+    await state.clear()
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        f"✅ <b>Пополнение Steam принято</b>\n\n"
+        f"Логин: <code>{login}</code>\n"
+        f"Сумма: {amount} ₽\n"
+        f"Списано: {format_price(user_price)}\n"
+        f"Заказ: #{local_order_id} / поставщик #{result.order_id}",
+        parse_mode="HTML",
+    )
+    await callback.answer()
 
 
 # ── Games ────────────────────────────────────────────────────────────
@@ -117,12 +207,9 @@ async def process_steam_amount(
 
 @router.callback_query(F.data == "games_list")
 async def cb_games_list(callback: CallbackQuery) -> None:
-    # In MVP: show instructions for entering variation_id
     await callback.message.edit_text(  # type: ignore[union-attr]
         "🎮 <b>Покупка игр</b>\n\n"
-        "Для покупки игры введите ID варианта (variation_id).\n"
-        "Узнать ID можно у администратора.\n\n"
-        "Введите /buy_game &lt;variation_id&gt; для покупки.",
+        "Раздел временно закрыт на доработку. Готовые товары доступны в каталоге.",
         parse_mode="HTML",
     )
     await callback.answer()

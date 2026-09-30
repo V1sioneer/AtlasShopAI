@@ -7,3 +7,8 @@ __pycache__/
 .pytest_cache/
 *.log
 .DS_Store
+venv/
+.venv/
+*.db-wal
+*.db-shm
+backups/

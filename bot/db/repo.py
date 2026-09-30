@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import math
+from datetime import UTC, datetime
 from typing import Optional, Sequence
 
 from sqlalchemy import func, select, update
@@ -58,7 +59,9 @@ class UserRepo:
         return result.scalar() or 0
 
     async def count_today(self) -> int:
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(UTC).replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+        )
         stmt = select(func.count(User.id)).where(User.created_at >= today_start)
         result = await self.session.execute(stmt)
         return result.scalar() or 0
@@ -70,6 +73,8 @@ class UserRepo:
 
     async def update_balance(self, user_id: int, delta: float) -> float:
         """Atomically update user balance. Returns new balance."""
+        if not math.isfinite(delta):
+            raise ValueError("Некорректная сумма")
         stmt = (
             update(User)
             .where(User.id == user_id)
@@ -80,6 +85,17 @@ class UserRepo:
         new_balance = result.scalar_one()
         await self.session.flush()
         return new_balance
+
+    async def debit(self, user_id: int, amount: float) -> float | None:
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError("Сумма списания должна быть положительной")
+        result = await self.session.execute(
+            update(User)
+            .where(User.id == user_id, User.balance_rub >= amount)
+            .values(balance_rub=User.balance_rub - amount)
+            .returning(User.balance_rub)
+        )
+        return result.scalar_one_or_none()
 
 
 class OrderRepo:
@@ -102,6 +118,7 @@ class OrderRepo:
         qty: int = 1,
         payload: Optional[dict] = None,
         status: OrderStatus = OrderStatus.PENDING,
+        request_key: Optional[str] = None,
     ) -> Order:
         order = Order(
             user_id=user_id,
@@ -113,6 +130,7 @@ class OrderRepo:
             partner_price=partner_price,
             user_price=user_price,
             status=status,
+            request_key=request_key,
         )
         self.session.add(order)
         await self.session.flush()
@@ -132,7 +150,7 @@ class OrderRepo:
         if order is None:
             return None
         order.status = status
-        order.updated_at = datetime.utcnow()
+        order.updated_at = datetime.now(UTC).replace(tzinfo=None)
         if partner_order_id is not None:
             order.partner_order_id = partner_order_id
         if delivered_data is not None:
@@ -178,6 +196,23 @@ class OrderRepo:
         stmt = select(Order).where(Order.id == order_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_by_request_key(self, request_key: str) -> Optional[Order]:
+        result = await self.session.execute(select(Order).where(Order.request_key == request_key))
+        return result.scalar_one_or_none()
+
+    async def transition(self, order_id: int, from_statuses: list[OrderStatus], status: OrderStatus, **values) -> bool:
+        result = await self.session.execute(
+            update(Order)
+            .where(Order.id == order_id, Order.status.in_(from_statuses))
+            .values(
+                status=status,
+                updated_at=datetime.now(UTC).replace(tzinfo=None),
+                **values,
+            )
+            .returning(Order.id)
+        )
+        return result.scalar_one_or_none() is not None
 
 
 class TransactionRepo:
@@ -321,17 +356,20 @@ class DepositRepo:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def get_by_external_id(self, external_id: str) -> Optional[Deposit]:
+    async def get_by_external_id(self, external_id: str, method: str | None = None) -> Optional[Deposit]:
         stmt = select(Deposit).where(Deposit.external_id == external_id)
+        if method is not None:
+            stmt = stmt.where(Deposit.method == method)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def mark_paid(self, deposit_id: int) -> None:
+    async def mark_paid(self, deposit_id: int) -> bool:
         stmt = (
             update(Deposit)
-            .where(Deposit.id == deposit_id)
+            .where(Deposit.id == deposit_id, Deposit.status == "pending")
             .values(status="paid")
+            .returning(Deposit.id)
         )
-        await self.session.execute(stmt)
-        await self.session.flush()
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
 

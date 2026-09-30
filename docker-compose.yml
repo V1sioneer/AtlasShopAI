@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////app/data/data.db
     volumes:
       - bot_data:/app/data
     logging:

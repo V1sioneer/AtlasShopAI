@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 
 import httpx
 import structlog
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 
 logger = structlog.get_logger()
 
@@ -17,7 +17,7 @@ logger = structlog.get_logger()
 class Product(BaseModel):
     id: int
     name: str
-    price: float
+    price: float = Field(ge=0, allow_inf_nan=False)
     in_stock: bool
     stock: int
     category: str = ""
@@ -59,10 +59,11 @@ class ExternalStatus(BaseModel):
 
 
 class PartnerAPIError(Exception):
-    def __init__(self, code: str, message: str, http_status: int = 0):
+    def __init__(self, code: str, message: str, http_status: int = 0, *, outcome_unknown: bool = False):
         self.code = code
         self.message = message
         self.http_status = http_status
+        self.outcome_unknown = outcome_unknown
         super().__init__(f"[{code}] {message} (HTTP {http_status})")
 
 
@@ -126,7 +127,9 @@ class PartnerAPIClient:
     ) -> dict[str, Any]:
         last_exc: Optional[Exception] = None
 
-        for attempt in range(self.MAX_RETRIES):
+        mutation = method.upper() != "GET"
+        retries = 1 if mutation else self.MAX_RETRIES
+        for attempt in range(retries):
             await self._limiter.acquire()
 
             log = logger.bind(
@@ -139,16 +142,19 @@ class PartnerAPIClient:
                     method, path, json=json_body, params=params
                 )
             except httpx.HTTPError as exc:
-                log.warning("http_transport_error", error=str(exc))
-                last_exc = exc
-                if attempt < self.MAX_RETRIES - 1:
+                log.warning("http_transport_error", error=type(exc).__name__)
+                last_exc = PartnerAPIError(
+                    "TRANSPORT_ERROR", "Нет ответа от поставщика", outcome_unknown=mutation,
+                )
+                if mutation:
+                    raise last_exc from exc
+                if attempt < retries - 1:
                     await asyncio.sleep(self.RETRY_BACKOFF[min(attempt, 2)])
                 continue
 
             log.debug(
                 "api_response",
                 status_code=resp.status_code,
-                body=resp.text[:500],
             )
 
             # Rate limited
@@ -158,7 +164,8 @@ class PartnerAPIClient:
                 last_exc = PartnerAPIError(
                     "RATE_LIMIT_EXCEEDED", "Rate limited", 429
                 )
-                await asyncio.sleep(delay)
+                if attempt < retries - 1:
+                    await asyncio.sleep(delay)
                 continue
 
             # Server errors (5xx) — one retry
@@ -168,14 +175,23 @@ class PartnerAPIClient:
                     "SERVER_ERROR",
                     f"Server returned {resp.status_code}",
                     resp.status_code,
+                    outcome_unknown=mutation,
                 )
-                if attempt == 0:
+                if not mutation and attempt < retries - 1:
                     await asyncio.sleep(1.0)
                     continue
                 raise last_exc
 
             # Parse JSON
-            data = resp.json()
+            try:
+                data = resp.json()
+                if not isinstance(data, dict):
+                    raise ValueError("Expected object")
+            except ValueError as exc:
+                raise PartnerAPIError(
+                    "INVALID_RESPONSE", "Некорректный ответ поставщика", resp.status_code,
+                    outcome_unknown=mutation,
+                ) from exc
 
             if data.get("status") == "error":
                 raise PartnerAPIError(
@@ -184,11 +200,24 @@ class PartnerAPIClient:
                     http_status=resp.status_code,
                 )
 
+            if resp.is_error:
+                raise PartnerAPIError("HTTP_ERROR", "Запрос отклонён поставщиком", resp.status_code)
+
             return data
 
         if last_exc:
             raise last_exc
         raise PartnerAPIError("MAX_RETRIES", "Max retries exceeded", 0)
+
+    @staticmethod
+    def _order_response(model, data: dict):
+        try:
+            return model(**data)
+        except ValidationError as exc:
+            raise PartnerAPIError(
+                "INVALID_RESPONSE", "Поставщик не вернул данные созданного заказа",
+                outcome_unknown=True,
+            ) from exc
 
     # ── Catalog ──────────────────────────────────────────────────────
 
@@ -209,7 +238,7 @@ class PartnerAPIClient:
             "/api/v1/order/create",
             json_body={"product_id": product_id, "qty": qty},
         )
-        return OrderResult(**data)
+        return self._order_response(OrderResult, data)
 
     async def get_order_status(self, order_id: int) -> dict[str, Any]:
         return await self._request("GET", f"/api/v1/order/status/{order_id}")
@@ -259,7 +288,7 @@ class PartnerAPIClient:
             "/api/v1/steam/buy",
             json_body={"login": login, "amount_rub": amount_rub},
         )
-        return ExternalOrder(**data)
+        return self._order_response(ExternalOrder, data)
 
     # ── Games ────────────────────────────────────────────────────────
 
@@ -271,7 +300,7 @@ class PartnerAPIClient:
             "/api/v1/games/buy",
             json_body={"variation_id": variation_id, "fields": fields or {}},
         )
-        return ExternalOrder(**data)
+        return self._order_response(ExternalOrder, data)
 
     # ── External status ──────────────────────────────────────────────
 

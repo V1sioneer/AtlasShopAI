@@ -16,7 +16,12 @@ from bot.keyboards.kb import (
     confirm_purchase_kb,
     product_card_kb,
 )
-from bot.services.orders import InsufficientUserBalance, OrderService
+from bot.services.orders import (
+    DuplicateOrder,
+    InsufficientUserBalance,
+    OrderOutcomeUnknown,
+    OrderService,
+)
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError, Product
 from bot.services.pricing import calculate_user_price
 from bot.utils.formatting import format_price
@@ -261,17 +266,41 @@ async def cb_confirm_catalog(
     qty = int(parts[2])
 
     svc = OrderService(session, api, markup_percent)
+    request_key = (
+        f"catalog:{db_user.id}:{callback.message.chat.id}:"
+        f"{callback.message.message_id}:{product_id}:{qty}"
+    )
 
     try:
         result, user_price = await svc.buy_catalog_product(
             user_id=db_user.id,
             product_id=product_id,
             qty=qty,
+            request_key=request_key,
         )
     except InsufficientUserBalance as exc:
         await callback.message.edit_text(  # type: ignore[union-attr]
             f"❌ Недостаточно средств.\n{exc}",
         )
+        await callback.answer()
+        return
+    except DuplicateOrder:
+        await callback.answer("Этот заказ уже отправлен на обработку.", show_alert=True)
+        return
+    except OrderOutcomeUnknown:
+        await callback.message.edit_text(
+            "⚠️ Поставщик получил запрос, но итоговый статус пока неизвестен. "
+            "Средства сохранены за заказом; поддержка проверит его вручную."
+        )  # type: ignore[union-attr]
+        for aid in admin_ids:
+            try:
+                await callback.bot.send_message(  # type: ignore[union-attr]
+                    aid,
+                    f"⚠️ Неопределённый заказ пользователя {db_user.id}: "
+                    f"товар {product_id}, количество {qty}",
+                )
+            except Exception:
+                pass
         await callback.answer()
         return
     except PartnerAPIError as exc:
