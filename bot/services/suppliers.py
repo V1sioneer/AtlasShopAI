@@ -11,13 +11,8 @@ from bot.services.partner_api import PartnerAPIClient, PartnerAPIError, Product
 logger = structlog.get_logger()
 
 
-def replaced_product(product: Product) -> bool:
-    name = (product.category + " " + product.name).lower().replace(" ", "")
-    return "gemini" in name or "chatgpt" in name
-
-
 class SupplierRouter:
-    def __init__(self, primary: PartnerAPIClient, aethel: AethelAPIClient):
+    def __init__(self, primary: PartnerAPIClient, aethel: AethelAPIClient | None = None):
         self.primary = primary
         self.aethel = aethel
 
@@ -27,6 +22,8 @@ class SupplierRouter:
         return getattr(self.primary, name)
 
     async def get_products(self):
+        if self.aethel is None:
+            return await self.primary.get_products()
         results = await asyncio.gather(self.primary.get_products(), self.aethel.get_products(),
                                        return_exceptions=True)
         combined = []
@@ -34,14 +31,22 @@ class SupplierRouter:
             if isinstance(result, Exception):
                 logger.warning("supplier_catalog_unavailable", supplier=provider, error=type(result).__name__)
                 continue
-            combined.extend(product for product in result
-                            if provider == "aethel" or not replaced_product(product))
+            combined.extend(result)
         if all(isinstance(result, Exception) for result in results):
             raise PartnerAPIError("CATALOG_UNAVAILABLE", "Каталог временно недоступен")
         return combined
 
+    async def get_supplier_products(self, supplier: str):
+        if supplier == "thegodshop":
+            return await self.primary.get_products()
+        if supplier == "aethel" and self.aethel is not None:
+            return await self.aethel.get_products()
+        raise PartnerAPIError("SUPPLIER_UNAVAILABLE", "Этот поставщик временно недоступен")
+
     async def get_product(self, product_id: int):
         if product_id < 0:
+            if self.aethel is None:
+                raise PartnerAPIError("SUPPLIER_UNAVAILABLE", "Aethel пока не подключён")
             return await self.aethel.get_product(product_id)
         # Old links and promotions retain their original SKU and terms.
         return await self.primary.get_product(product_id)
@@ -64,4 +69,6 @@ class SupplierRouter:
         return await self.primary.create_order(product_id, qty)
 
     async def close(self):
-        await asyncio.gather(self.primary.close(), self.aethel.close())
+        await self.primary.close()
+        if self.aethel is not None:
+            await self.aethel.close()

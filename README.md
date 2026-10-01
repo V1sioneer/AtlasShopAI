@@ -1,6 +1,13 @@
 # TGShopBot — Telegram-бот витрина
 
-Telegram-бот для перепродажи цифровых товаров, ИИ-подписок, пополнения Steam и игр через Partner API магазина [thegodapishop.xyz](https://thegodapishop.xyz).
+Telegram-бот для перепродажи цифровых товаров и ИИ-подписок через TheGodShop и Aethel, пополнения Steam и игр.
+
+В каталоге покупатель выбирает поставщика 1 (TheGodShop) или 2 (Aethel).
+Импортируются все товары обоих API; доступны поиск, фильтр наличия и избранное.
+Товары каталога TheGodShop оплачиваются за счёт покупателя: сервисный сбор
+магазину и закупочная сумма поставщику, без предварительного пополнения
+партнёрского баланса. У Aethel остаётся покупка с баланса владельца.
+Подробности, ограничения и поддержка платежей — [docs/SUPPLIERS.md](docs/SUPPLIERS.md).
 
 ## Возможности
 
@@ -35,6 +42,10 @@ cp .env.example .env
 | `BOT_TOKEN` | Токен Telegram-бота от @BotFather |
 | `PARTNER_API_KEY` | Ключ партнёра (PRTNR-...) |
 | `PARTNER_API_BASE` | URL API (по умолчанию https://api.thegodapishop.xyz) |
+| `AETHEL_API_KEY` | Ключ второго поставщика |
+| `AETHEL_API_BASE` | URL API Aethel (по умолчанию https://mail-api.hvmforum.space/api) |
+| `AETHEL_USD_RUB_RATE` | Рублёвая стоимость пополнения одного USD с учётом комиссий; 0 отключает Aethel |
+| `DIRECT_SUPPLIER_CHECKOUT_ENABLED` | Прямая оплата товаров каталога TheGodShop, по умолчанию true |
 | `DATABASE_URL` | Строка подключения к БД |
 | `MARKUP_PERCENT` | Наценка в % (по умолчанию 15) |
 | `ADMIN_IDS` | Telegram ID администраторов через запятую |

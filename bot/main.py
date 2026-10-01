@@ -84,8 +84,10 @@ async def main() -> None:
         except PartnerAPIError as exc:
             logger.warning("aethel_check_failed", code=exc.code)
         api = SupplierRouter(api, aethel)
-        logger.info("supplier_routing_enabled", gemini="aethel", chatgpt="aethel",
-                    claude="thegodshop", usd_rub_rate=settings.aethel_usd_rub_rate)
+        logger.info("supplier_routing_enabled", suppliers=["thegodshop", "aethel"],
+                    usd_rub_rate=settings.aethel_usd_rub_rate)
+    else:
+        api = SupplierRouter(api)
 
     # ── Init Bot & Dispatcher ────────────────────────────────────────
     bot_kwargs: dict = {
@@ -149,6 +151,7 @@ async def main() -> None:
     bg_tasks.append(asyncio.create_task(poll_supplier_checkouts(
         bot=bot, session_factory=session_factory, api=api,
         admin_ids=settings.admin_ids, markup_percent=settings.markup_percent,
+        cryptobot=cryptobot,
     )))
 
     bg_tasks.append(

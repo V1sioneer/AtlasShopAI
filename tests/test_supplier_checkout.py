@@ -435,3 +435,218 @@ async def test_restart_releases_coupon_when_invoice_link_was_never_persisted(tmp
         assert (await session.scalar(select(PromotionClaim))).order_id is None
         assert (await session.get(User, 1)).balance_rub == 77
     await close_db()
+
+
+class FakeStorePayment:
+    def __init__(self):
+        self.invoices = {}
+        self.calls = 0
+        self.status_calls = 0
+        self.failure = None
+
+    async def create_invoice(self, amount, description="", payload=""):
+        self.calls += 1
+        if self.failure:
+            raise self.failure
+        identifier = 1000 + self.calls
+        self.invoices[identifier] = dict(invoice_id=identifier, status="active", amount=amount,
+                                        currency="RUB", payload=payload)
+        return {**self.invoices[identifier], "pay_url": "https://t.me/CryptoBot?start=store-test"}
+
+    async def get_invoice(self, identifier):
+        self.status_calls += 1
+        return dict(self.invoices[identifier])
+
+
+async def full_checkout(sessions, supplier, store, *, user=3, qty=1, key="full"):
+    async with sessions() as session:
+        total = 115 * qty if user == 3 else 100 + 115 * (qty - 1)
+        checkout, order = await SupplierCheckoutService(session, supplier, 15, store).create(
+            user, 38, expected_price=total, request_key=key, qty=qty)
+        return checkout.id, checkout.deposit_id, checkout.margin_invoice_id
+
+
+@pytest.mark.asyncio
+async def test_normal_sale_needs_both_payments_and_funds_own_purchase(sessions):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, margin_invoice = await full_checkout(sessions, supplier, store)
+    async with sessions() as session:
+        service = SupplierCheckoutService(session, supplier, 15, store)
+        checkout, order = await service.check(identifier, 3)
+        assert order.user_price == 115 and checkout.amount_rub == 100 and checkout.margin_amount_rub == 15
+        text, keyboard = checkout_view(checkout, order)
+        assert "115 ₽" in text and "100 ₽" in text and "15 ₽" in text
+        assert any(button.url == checkout.margin_pay_url for row in keyboard.inline_keyboard for button in row)
+        assert all(button.url != checkout.pay_url for row in keyboard.inline_keyboard for button in row)
+        store.invoices[margin_invoice]["status"] = "paid"
+        checkout, order = await service.check(identifier, 3)
+        assert checkout.margin_paid and not checkout.supplier_paid and supplier.order_calls == 0
+        _, keyboard = checkout_view(checkout, order)
+        assert any(button.url == checkout.pay_url for row in keyboard.inline_keyboard for button in row)
+        supplier.pay(deposit)
+        checkout, order = await service.check(identifier, 3)
+        assert checkout.status == "delivered" and order.status == OrderStatus.SUCCESS
+        assert supplier.balance == 0 and supplier.order_calls == 1
+        assert (await session.get(User, 3)).balance_rub == 500
+        assert await session.scalar(select(func.count(Transaction.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_supplier_only_payment_cannot_bypass_store_fee(sessions):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, margin = await full_checkout(sessions, supplier, store)
+    supplier.pay(deposit)
+    async with sessions() as session:
+        checkout, order = await SupplierCheckoutService(session, supplier, 15, store).check(identifier, 3)
+        assert checkout.supplier_paid and not checkout.margin_paid
+        assert order.status == OrderStatus.WAITING_PAYMENT and supplier.order_calls == 0
+        from bot.services.supplier_funding import protected_supplier_amount
+        assert await protected_supplier_amount(session) == 100
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("qty,user,total,cost,margin", [(2, 3, 230, 200, 30), (2, 1, 215, 200, 15)])
+async def test_multiple_units_fund_full_cost_and_apply_one_coupon(sessions, qty, user, total, cost, margin):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, store_invoice = await full_checkout(sessions, supplier, store, user=user, qty=qty)
+    store.invoices[store_invoice]["status"] = "paid"
+    supplier.pay(deposit)
+    async with sessions() as session:
+        checkout, order = await SupplierCheckoutService(session, supplier, 15, store).check(identifier, user)
+        assert checkout.status == "delivered" and order.qty == 2
+        assert (order.user_price, checkout.amount_rub, checkout.margin_amount_rub) == (total, cost, margin)
+        assert supplier.balance == 0 and supplier.order_calls == 1
+        assert (await session.get(User, user)).balance_rub == 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", [("amount", 14), ("currency", "USD"), ("payload", "other"), ("invoice_id", 900)])
+async def test_store_invoice_mismatch_never_purchases(sessions, field, value):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, margin = await full_checkout(sessions, supplier, store)
+    supplier.pay(deposit)
+    store.invoices[margin]["status"] = "paid"
+    store.invoices[margin][field] = value
+    async with sessions() as session:
+        checkout, order = await SupplierCheckoutService(session, supplier, 15, store).check(identifier, 3)
+        assert checkout.status == "attention" and checkout.error_code == "MARGIN_PAYMENT_MISMATCH"
+        assert supplier.order_calls == 0
+        assert (await session.get(User, 3)).balance_rub == 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("paid", ["store", "supplier", "neither"])
+async def test_expiry_with_partial_payment_is_saved_for_support(sessions, paid):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, margin = await full_checkout(sessions, supplier, store)
+    if paid == "store":
+        store.invoices[margin]["status"] = "paid"
+        supplier.invoices[deposit]["status"] = "expired"
+    else:
+        store.invoices[margin]["status"] = "expired"
+        if paid == "supplier": supplier.pay(deposit)
+    async with sessions() as session:
+        checkout, order = await SupplierCheckoutService(session, supplier, 15, store).check(identifier, 3)
+        assert checkout.status == ("expired" if paid == "neither" else "attention")
+        if paid != "neither": assert checkout.error_code == "PARTIAL_PAYMENT"
+        assert supplier.order_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_partial_refund_records_only_already_paid_amount(sessions):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, margin = await full_checkout(sessions, supplier, store)
+    store.invoices[margin]["status"] = "paid"
+    supplier.invoices[deposit]["status"] = "expired"
+    async with sessions() as session:
+        service = SupplierCheckoutService(session, supplier, 15, store)
+        await service.check(identifier, 3)
+        with pytest.raises(CheckoutError): await service.record_refund(identifier, 115)
+        checkout, order = await service.record_refund(identifier, 15)
+        assert checkout.status == "refunded" and (await session.get(User, 3)).balance_rub == 500
+
+
+@pytest.mark.asyncio
+async def test_duplicate_full_checkout_and_concurrent_fulfillment_use_one_invoice_pair(sessions):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    results = await asyncio.gather(full_checkout(sessions, supplier, store), full_checkout(sessions, supplier, store))
+    assert results[0][0] == results[1][0] and store.calls == 1 and supplier.invoice_calls == 1
+    identifier = results[0][0]
+    async with sessions() as session:
+        checkout = await session.get(SupplierCheckout, identifier)
+        deposit, margin = checkout.deposit_id, checkout.margin_invoice_id
+    store.invoices[margin]["status"] = "paid"
+    supplier.pay(deposit)
+    async def check():
+        async with sessions() as session:
+            return await SupplierCheckoutService(session, supplier, 15, store).check(identifier, 3)
+    await asyncio.gather(check(), check())
+    assert supplier.order_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_background_sends_supplier_link_after_fee_once_and_delivery_once(sessions):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, margin = await full_checkout(sessions, supplier, store)
+    store.invoices[margin]["status"] = "paid"
+    bot = SimpleNamespace(send_message=AsyncMock())
+    await process_supplier_checkouts_once(bot, sessions, supplier, [], 15, store)
+    await process_supplier_checkouts_once(bot, sessions, supplier, [], 15, store)
+    assert bot.send_message.call_count == 1
+    assert bot.send_message.call_args.args[0] == 3
+    supplier.pay(deposit)
+    await process_supplier_checkouts_once(bot, sessions, supplier, [], 15, store)
+    await process_supplier_checkouts_once(bot, sessions, supplier, [], 15, store)
+    assert supplier.order_calls == 1 and bot.send_message.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_foreign_user_cannot_access_either_full_checkout_payment(sessions):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    identifier, deposit, margin = await full_checkout(sessions, supplier, store)
+    async with sessions() as session:
+        with pytest.raises(CheckoutError):
+            await SupplierCheckoutService(session, supplier, 15, store).check(identifier, 2)
+    assert supplier.status_calls == 0 and store.status_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_store_gateway_unavailable_does_not_create_supplier_invoice(sessions):
+    supplier = FakeSupplier()
+    async with sessions() as session:
+        with pytest.raises(CheckoutError):
+            await SupplierCheckoutService(session, supplier, 15).create(3, 38, expected_price=115, request_key="no-gateway")
+        assert await session.scalar(select(Order)) is None
+        assert supplier.invoice_calls == 0
+        assert (await session.get(User, 3)).balance_rub == 500
+
+
+@pytest.mark.asyncio
+async def test_store_invoice_transport_failure_is_not_retried_and_exposes_no_payment(sessions):
+    supplier, store = FakeSupplier(), FakeStorePayment()
+    store.failure = RuntimeError("Invoice creation response lost")
+    with pytest.raises(RuntimeError):
+        await full_checkout(sessions, supplier, store)
+    async with sessions() as session:
+        checkout = await session.scalar(select(SupplierCheckout))
+        assert checkout.status == "failed" and checkout.pay_url is None and checkout.margin_pay_url is None
+        assert (await session.get(User, 3)).balance_rub == 500
+        await SupplierCheckoutService(session, supplier, 15, store).create(3, 38, expected_price=115, request_key="full")
+        assert store.calls == 1 and supplier.invoice_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_legacy_supplier_checkout_schema_migration_keeps_promo_payment_defaults():
+    from sqlalchemy import text
+    from bot.db.engine import upgrade_schema
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.execute(text("CREATE TABLE orders (id INTEGER PRIMARY KEY, request_key VARCHAR, supplier VARCHAR, supplier_order_ref VARCHAR)"))
+        await connection.execute(text("CREATE TABLE deposits (method VARCHAR, external_id VARCHAR)"))
+        await connection.execute(text("CREATE TABLE supplier_checkouts (id INTEGER PRIMARY KEY, amount_rub FLOAT, supplier_paid BOOLEAN)"))
+        await connection.execute(text("INSERT INTO supplier_checkouts VALUES (1, 100, 1)"))
+        await connection.run_sync(upgrade_schema)
+        await connection.run_sync(upgrade_schema)
+        row = (await connection.execute(text("SELECT amount_rub, supplier_paid, margin_amount_rub, margin_paid, margin_invoice_id FROM supplier_checkouts"))).one()
+        assert row == (100, 1, 0, 1, None)
+    await engine.dispose()

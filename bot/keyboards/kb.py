@@ -178,24 +178,20 @@ def product_card_kb(product_id: int, category: str = "all") -> InlineKeyboardMar
     )
 
 
-def confirm_purchase_kb(product_id: int, qty: int, price: float, direct: bool = False) -> InlineKeyboardMarkup:
+def confirm_purchase_kb(product_id: int, qty: int, price: float, direct: bool = False,
+                        wallet_available: bool = True) -> InlineKeyboardMarkup:
     rows = []
     if direct:
         rows.append([InlineKeyboardButton(
             text="💳 Оплатить криптой напрямую", callback_data=f"supplier_checkout:{product_id}:{qty}:{price:.2f}"
         )])
-    rows.extend([
-            [
-                InlineKeyboardButton(
+    if wallet_available:
+        rows.append([
+            InlineKeyboardButton(
                     text="💰 Купить с баланса" if direct else "✅ Подтвердить",
                     callback_data=f"confirm_catalog:{product_id}:{qty}:{price:.2f}",
-                ),
-                InlineKeyboardButton(
-                    text="❌ Отмена",
-                    callback_data="cancel_purchase",
-                ),
-            ],
-        ])
+                )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_purchase")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

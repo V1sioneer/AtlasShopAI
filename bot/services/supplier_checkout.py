@@ -7,10 +7,11 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.models import Order, OrderStatus, OrderType, PartnerDeposit, SupplierCheckout
+from bot.db.models import Deposit, Order, OrderStatus, OrderType, PartnerDeposit, SupplierCheckout
 from bot.db.repo import OrderRepo
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
 from bot.services.promotions import PromotionService
+from bot.services.payments import CryptoBotPayment
 from bot.services.supplier_funding import require_supplier_funds, supplier_spend_lock
 from bot.utils.money import money
 
@@ -25,12 +26,27 @@ RETRYABLE_ERRORS = {
 
 
 class SupplierCheckoutService:
-    def __init__(self, session: AsyncSession, api: PartnerAPIClient, markup: float):
+    def __init__(self, session: AsyncSession, api: PartnerAPIClient, markup: float,
+                 cryptobot: CryptoBotPayment | None = None):
         self.session = session
         self.api = api
         self.markup = markup
         self.orders = OrderRepo(session)
         self.promotions = PromotionService(session)
+        self.cryptobot = cryptobot
+
+    @staticmethod
+    def margin_payload(checkout: SupplierCheckout, order: Order) -> str:
+        return f"direct:{checkout.id}:{order.user_id}:{money(checkout.margin_amount_rub)}"
+
+    @staticmethod
+    def safe_payment_url(url: str | None) -> bool:
+        try:
+            parsed = urlsplit(url or "")
+            return (parsed.scheme == "https" and parsed.hostname in ("t.me", "pay.crypt.bot")
+                    and parsed.username is None and parsed.password is None and parsed.port in (None, 443))
+        except ValueError:
+            return False
 
     async def get(self, checkout_id: int, user_id: int | None = None) -> tuple[SupplierCheckout, Order]:
         query = select(SupplierCheckout, Order).join(Order, Order.id == SupplierCheckout.order_id).where(
@@ -61,34 +77,41 @@ class SupplierCheckoutService:
         await self.session.commit()
 
     async def create(
-        self, user_id: int, product_id: int, *, expected_price: float, request_key: str,
+        self, user_id: int, product_id: int, *, expected_price: float, request_key: str, qty: int = 1,
     ) -> tuple[SupplierCheckout, Order]:
         existing = await self._by_request(request_key, user_id)
         if existing:
             return existing
+        if type(qty) is not int or not 1 <= qty <= 99:
+            raise CheckoutError("Количество должно быть от 1 до 99.")
         product = await self.api.get_product(product_id)
-        if not product.direct_payment_supported:
+        if not product.direct_payment_supported or product.supplier != "thegodshop" or product_id <= 0:
             raise CheckoutError("Этот поставщик не поддерживает оплату напрямую. Счёт не создан.")
-        if not product.in_stock or product.stock < 1:
+        if not product.in_stock or product.stock < qty:
             raise CheckoutError("Товар закончился. Счёт не создан, купон сохранён.")
-        quote = await self.promotions.quote(user_id, product, 1, self.markup)
-        if quote.claim_id is None or money(quote.payable_price) != money(product.price):
-            raise CheckoutError("Прямая оплата доступна для одной покупки по промокоду без наценки.")
+        quote = await self.promotions.quote(user_id, product, qty, self.markup)
+        cost = money(product.price) * qty
+        margin = money(quote.payable_price) - cost
+        if cost <= 0 or margin < 0:
+            raise CheckoutError("Некорректная цена заказа.")
+        if margin > 0 and self.cryptobot is None:
+            raise CheckoutError("Оплата сервисного сбора временно недоступна. Счёт не создан.")
         if money(expected_price) != money(quote.payable_price):
             raise CheckoutError("Цена изменилась. Откройте карточку и подтвердите актуальную сумму.")
         try:
             order = await self.orders.create(
                 user_id=user_id, order_type=OrderType.CATALOG,
-                partner_price=product.price, user_price=quote.payable_price,
-                product_id=product_id, qty=1, request_key=request_key,
+                partner_price=float(cost), user_price=quote.payable_price,
+                product_id=product_id, qty=qty, request_key=request_key,
                 status=OrderStatus.WAITING_PAYMENT,
                 payload={"payment_method": "supplier_crypto", "product_name": product.name,
                          "promo_code": quote.promo_code, "discount": quote.discount,
                          "regular_price": quote.regular_price},
             )
-            if not await self.promotions.reserve_for_order(quote.claim_id, user_id, product_id, order.id):
+            if quote.claim_id is not None and not await self.promotions.reserve_for_order(quote.claim_id, user_id, product_id, order.id):
                 raise CheckoutError("Купон уже используется в другом заказе.")
-            checkout = SupplierCheckout(order_id=order.id, amount_rub=quote.payable_price, status="creating")
+            checkout = SupplierCheckout(order_id=order.id, amount_rub=float(cost), status="creating",
+                                        margin_amount_rub=float(margin), margin_paid=margin == 0)
             self.session.add(checkout)
             await self.session.commit()
         except IntegrityError:
@@ -105,16 +128,27 @@ class SupplierCheckoutService:
         # generate a second invoice automatically for this same request.
         checkout_id, order_id = checkout.id, order.id
         try:
+            if margin > 0:
+                store_invoice = await self.cryptobot.create_invoice(
+                    float(margin), description=f"Сервисный сбор Atlas Shop, заказ #{order.id}",
+                    payload=self.margin_payload(checkout, order),
+                )
+                if (type(store_invoice.get("invoice_id")) is not int or store_invoice["invoice_id"] <= 0
+                    or money(store_invoice.get("amount")) != margin or store_invoice.get("currency") != "RUB"
+                    or store_invoice.get("status") != "active" or not self.safe_payment_url(store_invoice.get("pay_url"))):
+                    raise CheckoutError("Некорректный счёт сервисного сбора. Оплата не запрашивалась.")
+                if await self.session.scalar(select(Deposit.id).where(
+                    Deposit.method == "cryptobot", Deposit.external_id == str(store_invoice["invoice_id"])
+                )):
+                    raise CheckoutError("Этот счёт уже используется для пополнения баланса.")
+                checkout.margin_invoice_id = store_invoice["invoice_id"]
+                checkout.margin_pay_url = store_invoice["pay_url"]
             invoice = await self.api.deposit_crypto(checkout.amount_rub)
-            parsed = urlsplit(invoice.pay_url or "")
             if (
                 money(invoice.amount_rub) != money(checkout.amount_rub)
                 or invoice.deposit_id <= 0
                 or invoice.status not in (None, "pending", "active")
-                or parsed.scheme != "https"
-                or parsed.hostname not in ("t.me", "pay.crypt.bot")
-                or parsed.username is not None or parsed.password is not None
-                or parsed.port not in (None, 443)
+                or not self.safe_payment_url(invoice.pay_url)
             ):
                 raise CheckoutError("Поставщик вернул некорректный счёт. Оплата не запрашивалась.")
             if await self.session.scalar(select(PartnerDeposit.id).where(
@@ -151,6 +185,25 @@ class SupplierCheckoutService:
                 return checkout, order
             if checkout.deposit_id is None:
                 return checkout, order
+            margin_status = "paid" if checkout.margin_paid else "active"
+            if checkout.margin_amount_rub > 0 and not checkout.margin_paid:
+                if self.cryptobot is None:
+                    raise CheckoutError("Проверка сервисного сбора временно недоступна.")
+                invoice = await self.cryptobot.get_invoice(checkout.margin_invoice_id)
+                try:
+                    correct_margin = money(invoice.get("amount")) == money(checkout.margin_amount_rub)
+                except ValueError:
+                    correct_margin = False
+                if (invoice.get("invoice_id") != checkout.margin_invoice_id
+                    or invoice.get("currency") != "RUB"
+                    or not correct_margin
+                    or invoice.get("payload") != self.margin_payload(checkout, order)
+                    or invoice.get("status") not in ("active", "paid", "expired")):
+                    await self._state(checkout, order, "attention", OrderStatus.ATTENTION, "MARGIN_PAYMENT_MISMATCH")
+                    return checkout, order
+                margin_status = invoice["status"]
+                checkout.margin_paid = margin_status == "paid"
+                await self.session.commit()
             payment = await self.api.get_deposit(checkout.deposit_id)
             try:
                 correct_amount = money(payment.amount_rub) == money(checkout.amount_rub)
@@ -159,18 +212,23 @@ class SupplierCheckoutService:
             if payment.deposit_id != checkout.deposit_id or payment.method != "crypto" or not correct_amount:
                 await self._state(checkout, order, "attention", OrderStatus.ATTENTION, "PAYMENT_MISMATCH")
                 return checkout, order
-            if payment.status in ("expired", "cancelled", "canceled") and not checkout.supplier_paid:
-                await self.promotions.restore_for_order(order.id)
-                await self._state(checkout, order, "expired", OrderStatus.EXPIRED)
+            if payment.status == "paid":
+                checkout.supplier_paid = True
+                await self.session.commit()
+            supplier_expired = payment.status in ("expired", "cancelled", "canceled")
+            if supplier_expired or margin_status == "expired":
+                if checkout.supplier_paid or (checkout.margin_amount_rub > 0 and checkout.margin_paid):
+                    await self._state(checkout, order, "attention", OrderStatus.ATTENTION, "PARTIAL_PAYMENT")
+                else:
+                    await self.promotions.restore_for_order(order.id)
+                    await self._state(checkout, order, "expired", OrderStatus.EXPIRED)
                 return checkout, order
-            if payment.status != "paid":
+            if not checkout.supplier_paid or not checkout.margin_paid:
                 return checkout, order
             if checkout.status == "expired":
                 checkout.supplier_paid = True
                 await self._state(checkout, order, "attention", OrderStatus.ATTENTION, "LATE_PAYMENT")
                 return checkout, order
-            checkout.supplier_paid = True
-            await self.session.commit()
             await self._fulfill(checkout, order)
             return checkout, order
 
@@ -179,9 +237,11 @@ class SupplierCheckoutService:
             product = await self.api.get_product(order.product_id)
             if product.id != order.product_id:
                 raise PartnerAPIError("READ_FAILED", "Поставщик вернул другой товар")
-            if not product.in_stock or product.stock < 1:
+            if not product.direct_payment_supported or product.supplier != "thegodshop":
+                raise PartnerAPIError("READ_FAILED", "Поставщик товара не совпадает с оплатой")
+            if not product.in_stock or product.stock < order.qty:
                 raise PartnerAPIError("OUT_OF_STOCK", "Товар закончился", 409)
-            if money(product.price) != money(checkout.amount_rub):
+            if money(product.price) * order.qty != money(checkout.amount_rub):
                 raise PartnerAPIError("PRICE_CHANGED", "Закупочная цена изменилась", 409)
             await require_supplier_funds(self.session, self.api, checkout.amount_rub, exclude_checkout=checkout.id)
         except PartnerAPIError as exc:
@@ -194,6 +254,7 @@ class SupplierCheckoutService:
                 SupplierCheckout.id == checkout.id,
                 SupplierCheckout.status.in_(["awaiting_payment", "attention"]),
                 SupplierCheckout.supplier_paid.is_(True),
+                SupplierCheckout.margin_paid.is_(True),
             ).values(status="fulfilling", error_code=None).returning(SupplierCheckout.id)
         )
         if claimed is None:
@@ -202,7 +263,7 @@ class SupplierCheckoutService:
         order.status = OrderStatus.PENDING
         await self.session.commit()
         try:
-            result = await self.api.create_order(order.product_id, 1)
+            result = await self.api.create_order(order.product_id, order.qty)
         except Exception as exc:
             uncertain = not isinstance(exc, PartnerAPIError) or exc.outcome_unknown
             await self._state(
@@ -211,6 +272,7 @@ class SupplierCheckoutService:
             )
             return
         order.partner_order_id = result.order_id
+        order.supplier_order_ref = str(result.order_id)
         order.delivered_data = result.delivered_data
         if money(result.price) != money(checkout.amount_rub) or not result.delivered_data:
             await self._state(checkout, order, "attention", OrderStatus.UNCERTAIN, "PURCHASE_REQUIRES_REVIEW")
@@ -223,9 +285,13 @@ class SupplierCheckoutService:
             checkout, order = await self.get(checkout_id)
             if checkout.status == "refunded":
                 return checkout, order
-            if checkout.status != "attention" or not checkout.supplier_paid:
+            if checkout.status != "attention" or not (
+                checkout.supplier_paid or (checkout.margin_amount_rub > 0 and checkout.margin_paid)
+            ):
                 raise CheckoutError("Возврат можно отметить только у оплаченного заказа на проверке.")
-            if money(amount) != money(checkout.amount_rub):
+            paid_amount = ((money(checkout.amount_rub) if checkout.supplier_paid else money(0))
+                           + (money(checkout.margin_amount_rub) if checkout.margin_paid else money(0)))
+            if money(amount) != paid_amount:
                 raise CheckoutError("Сумма должна совпадать с оплаченной суммой заказа.")
             await self.promotions.restore_for_order(order.id)
             await self._state(checkout, order, "refunded", OrderStatus.FAILED, "REFUND_CONFIRMED_BY_ADMIN")

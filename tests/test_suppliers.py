@@ -53,11 +53,11 @@ async def sessions(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_catalog_currency_rounding_stock_terms_and_excluded_products():
+async def test_catalog_currency_rounding_stock_terms_and_all_products():
     api = client(lambda request: httpx.Response(200, json=catalog(stock=0, price="0.501")))
     try:
         products = await api.get_products()
-        assert [p.id for p in products] == [-2, -13]
+        assert [p.id for p in products] == [-2, -13, -33, -16]
         assert products[0].price == 43.59
         assert products[0].price_usd == "0.501"
         assert products[0].usd_rub_rate == "87"
@@ -83,7 +83,8 @@ async def test_router_keeps_claude_namespaces_and_old_product_links():
     try:
         products = await router.get_products()
         assert [(p.id, p.supplier) for p in products] == [
-            (2, "thegodshop"), (9, "thegodshop"), (-2, "aethel"), (-13, "aethel")]
+            (2, "thegodshop"), (38, "thegodshop"), (8, "thegodshop"), (9, "thegodshop"),
+            (-2, "aethel"), (-13, "aethel"), (-33, "aethel"), (-16, "aethel")]
         assert await router.get_product(38) == "old promotion"
         assert (await router.get_product(-2)).supplier == "aethel"
     finally:
@@ -97,7 +98,10 @@ async def test_aethel_outage_does_not_swap_to_more_expensive_gemini():
         Product(id=2, name="Claude Pro", price=2200, stock=2, in_stock=True)]))
     api = client(lambda request: httpx.Response(503))
     try:
-        assert [p.id for p in await SupplierRouter(primary, api).get_products()] == [2]
+        router = SupplierRouter(primary, api)
+        assert [p.id for p in await router.get_supplier_products("thegodshop")] == [38, 2]
+        with pytest.raises(PartnerAPIError):
+            await router.get_supplier_products("aethel")
     finally:
         await api.close()
 

@@ -27,6 +27,18 @@ def upgrade_schema(connection) -> None:
             "ON deposits (method, external_id)"
         )
     )
+    inspector = inspect(connection)
+    if inspector.has_table("supplier_checkouts"):
+        checkout_columns = {c["name"] for c in inspector.get_columns("supplier_checkouts")}
+        for name, ddl in {
+            "margin_amount_rub": "FLOAT NOT NULL DEFAULT 0",
+            "margin_invoice_id": "INTEGER",
+            "margin_pay_url": "TEXT",
+            "margin_paid": "BOOLEAN NOT NULL DEFAULT 1",
+        }.items():
+            if name not in checkout_columns:
+                connection.execute(text(f"ALTER TABLE supplier_checkouts ADD COLUMN {name} {ddl}"))
+        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_checkout_margin_invoice ON supplier_checkouts (margin_invoice_id)"))
 
 
 def configure_sqlite(connection, _record) -> None:

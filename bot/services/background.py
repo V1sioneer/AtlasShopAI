@@ -244,6 +244,7 @@ async def poll_partner_deposits(
 async def process_supplier_checkouts_once(
     bot: Bot, session_factory: async_sessionmaker[AsyncSession], api: PartnerAPIClient,
     admin_ids: list[int], markup_percent: float,
+    cryptobot: CryptoBotPayment | None = None,
 ) -> None:
     from bot.handlers.supplier_checkout import checkout_view
     terminal = ("delivered", "attention", "expired", "refunded")
@@ -257,11 +258,22 @@ async def process_supplier_checkouts_once(
         )))).all()
     for checkout_id in ids:
         async with session_factory() as session:
-            service = SupplierCheckoutService(session, api, markup_percent)
+            service = SupplierCheckoutService(session, api, markup_percent, cryptobot)
             try:
                 checkout, order = await service.get(checkout_id)
                 if checkout.status == "awaiting_payment":
                     checkout, order = await service.check(checkout_id)
+                    if (checkout.status == "awaiting_payment" and checkout.margin_amount_rub > 0
+                        and checkout.margin_paid and not checkout.supplier_paid
+                        and checkout.user_notified_status != "pay_supplier"):
+                        text, keyboard = checkout_view(checkout, order)
+                        try:
+                            await bot.send_message(order.user_id, text, reply_markup=keyboard, parse_mode="HTML")
+                        except Exception:
+                            logger.warning("supplier_payment_link_notification_failed", checkout_id=checkout_id)
+                        else:
+                            checkout.user_notified_status = "pay_supplier"
+                            await session.commit()
                 if checkout.status not in terminal:
                     continue
                 status = checkout.status
@@ -284,7 +296,7 @@ async def process_supplier_checkouts_once(
                                 f"🧾 <b>Прямая оплата: {escape(status)}</b>\n"
                                 f"Заказ #{order.id}, ID счёта {checkout.id}\n"
                                 f"Покупатель: <code>{order.user_id}</code>\n"
-                                f"Сумма: {format_price(checkout.amount_rub)}\n"
+                                f"Сумма: {format_price(order.user_price)}\n"
                                 f"Причина: {escape(checkout.error_code or '—')}\n"
                                 f"Подробности: /direct_order {checkout.id}",
                                 parse_mode="HTML",
@@ -302,12 +314,13 @@ async def process_supplier_checkouts_once(
 async def poll_supplier_checkouts(
     bot: Bot, session_factory: async_sessionmaker[AsyncSession], api: PartnerAPIClient,
     admin_ids: list[int], markup_percent: float, interval: float = 15.0,
+    cryptobot: CryptoBotPayment | None = None,
 ) -> None:
     logger.info("background_task_started", task="poll_supplier_checkouts")
     while True:
         try:
             await asyncio.sleep(interval)
-            await process_supplier_checkouts_once(bot, session_factory, api, admin_ids, markup_percent)
+            await process_supplier_checkouts_once(bot, session_factory, api, admin_ids, markup_percent, cryptobot)
         except asyncio.CancelledError:
             break
         except Exception as exc:

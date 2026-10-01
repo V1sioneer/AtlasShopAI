@@ -194,9 +194,27 @@ class SupplierCheckout(Base):
     pay_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="creating")
     supplier_paid: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    margin_amount_rub: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    margin_invoice_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, nullable=True)
+    margin_pay_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    margin_paid: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     error_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     user_notified_status: Mapped[str] = mapped_column(String(32), default="", server_default="")
     admin_notified_status: Mapped[str] = mapped_column(String(32), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CatalogPreference(Base):
+    __tablename__ = "catalog_preferences"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), primary_key=True)
+    supplier: Mapped[str] = mapped_column(String(32), default="thegodshop")
+    in_stock_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    search_query: Mapped[str] = mapped_column(String(200), default="", server_default="")
+
+
+class FavoriteProduct(Base):
+    __tablename__ = "favorite_products"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), primary_key=True)
+    product_id: Mapped[int] = mapped_column(Integer, primary_key=True)
 

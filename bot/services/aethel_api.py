@@ -68,16 +68,8 @@ class AethelAPIClient:
         try:
             for category in data["categories"]:
                 for item in category["products"]:
-                    # Only the requested Gemini link and ChatGPT Plus plans.
-                    # K12 and other services are not equivalent replacements.
                     name = item["name"]
-                    normalized = name.lower().replace(" ", "")
-                    if item["id"] == 2 and "gemini" in normalized:
-                        group = "Gemini"
-                    elif "chatgptplus" in normalized:
-                        group = "ChatGPT"
-                    else:
-                        continue
+                    group = category.get("name") or "Другое"
                     item_id, stock = item["id"], item["available_quantity"]
                     if type(item_id) is not int or item_id <= 0 or item_id in seen:
                         raise ValueError("Invalid item id")

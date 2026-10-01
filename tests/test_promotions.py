@@ -233,7 +233,7 @@ async def test_purchase_screen_and_callback_carry_discounted_total(sessions):
         assert "100 ₽" in args.args[0] and "115 ₽" in args.args[0]
         keyboard = args.kwargs["reply_markup"]
         callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
-        assert "confirm_catalog:38:1:100.00" in callbacks
+        assert "confirm_catalog:38:1:100.00" not in callbacks
         assert "supplier_checkout:38:1:100.00" in callbacks
 
 
