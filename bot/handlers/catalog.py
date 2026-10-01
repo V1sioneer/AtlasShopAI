@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from html import escape
 
 import structlog
 from aiogram import F, Router
@@ -21,9 +22,10 @@ from bot.services.orders import (
     InsufficientUserBalance,
     OrderOutcomeUnknown,
     OrderService,
+    PriceChanged,
 )
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError, Product
-from bot.services.pricing import calculate_user_price
+from bot.services.promotions import CatalogQuote, PromotionService
 from bot.utils.formatting import format_price
 
 logger = structlog.get_logger()
@@ -35,6 +37,17 @@ ITEMS_PER_PAGE = 6
 
 class BuyQtyState(StatesGroup):
     waiting_qty = State()
+
+
+def quote_text(quote: CatalogQuote) -> str:
+    if quote.claim_id is None:
+        return f"Сумма: <b>{format_price(quote.payable_price)}</b>\n"
+    return (
+        f"Обычная сумма: <s>{format_price(quote.regular_price)}</s>\n"
+        f"Промокод {escape(quote.promo_code)}: −{format_price(quote.discount)}\n"
+        "Одна штука по закупочной цене, без наценки магазина.\n"
+        f"К оплате: <b>{format_price(quote.payable_price)}</b>\n"
+    )
 
 
 # ── Categories & Catalog list ────────────────────────────────────────
@@ -90,6 +103,8 @@ async def cb_category_page(
     callback: CallbackQuery,
     api: PartnerAPIClient,
     markup_percent: float,
+    session: AsyncSession,
+    db_user: User,
 ) -> None:
     parts = callback.data.split(":")  # type: ignore[union-attr]
     category = parts[1]
@@ -114,12 +129,16 @@ async def cb_category_page(
     page = max(0, min(page, total_pages - 1))
     start = page * ITEMS_PER_PAGE
     page_products = filtered[start : start + ITEMS_PER_PAGE]
+    prices = {}
+    for product in page_products:
+        quote = await PromotionService(session).quote(db_user.id, product, 1, markup_percent)
+        prices[product.id] = quote.payable_price
 
     title = f"📁 <b>{category}</b>" if category != "all" else "📦 <b>Все товары</b>"
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"{title}\n\nВыберите товар для покупки:",
         parse_mode="HTML",
-        reply_markup=catalog_page_kb(page_products, category, page, total_pages, markup_percent),
+        reply_markup=catalog_page_kb(page_products, category, page, total_pages, markup_percent, prices),
     )
     await callback.answer()
 
@@ -132,6 +151,8 @@ async def cb_product_card(
     callback: CallbackQuery,
     api: PartnerAPIClient,
     markup_percent: float,
+    session: AsyncSession,
+    db_user: User,
 ) -> None:
     parts = callback.data.split(":")  # type: ignore[union-attr]
     product_id = int(parts[1])
@@ -143,14 +164,14 @@ async def cb_product_card(
         await callback.answer(f"Ошибка: {exc.message}", show_alert=True)
         return
 
-    user_price = calculate_user_price(product.price, markup_percent)
+    quote = await PromotionService(session).quote(db_user.id, product, 1, markup_percent)
     stock_text = f"✅ В наличии ({product.stock} шт.)" if product.in_stock else "❌ Нет в наличии"
 
     cat_display = product.category or category
     text = (
-        f"📦 <b>{product.name}</b>\n\n"
-        f"📁 Категория: <b>{cat_display}</b>\n"
-        f"💰 Цена: <b>{format_price(user_price)}</b>\n"
+        f"📦 <b>{escape(product.name)}</b>\n\n"
+        f"📁 Категория: <b>{escape(cat_display)}</b>\n"
+        f"{quote_text(quote)}"
         f"📊 {stock_text}\n"
     )
 
@@ -170,6 +191,8 @@ async def cb_buy_catalog(
     callback: CallbackQuery,
     api: PartnerAPIClient,
     markup_percent: float,
+    session: AsyncSession,
+    db_user: User,
 ) -> None:
     parts = callback.data.split(":")  # type: ignore[union-attr]
     product_id = int(parts[1])
@@ -181,16 +204,16 @@ async def cb_buy_catalog(
         await callback.answer("Товар не найден", show_alert=True)
         return
 
-    user_price = calculate_user_price(product.price, markup_percent) * qty
+    quote = await PromotionService(session).quote(db_user.id, product, qty, markup_percent)
 
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"🛒 <b>Подтверждение покупки</b>\n\n"
-        f"Товар: {product.name}\n"
+        f"Товар: {escape(product.name)}\n"
         f"Количество: {qty}\n"
-        f"Сумма: <b>{format_price(user_price)}</b>\n\n"
+        f"{quote_text(quote)}\n"
         f"Подтвердить покупку?",
         parse_mode="HTML",
-        reply_markup=confirm_purchase_kb(product_id, qty),
+        reply_markup=confirm_purchase_kb(product_id, qty, quote.payable_price),
     )
     await callback.answer()
 
@@ -219,6 +242,8 @@ async def process_qty(
     state: FSMContext,
     api: PartnerAPIClient,
     markup_percent: float,
+    session: AsyncSession,
+    db_user: User,
 ) -> None:
     text = message.text or ""
     if not text.isdigit() or int(text) < 1 or int(text) > 99:
@@ -236,16 +261,16 @@ async def process_qty(
         await message.answer("⚠️ Товар не найден.")
         return
 
-    user_price = calculate_user_price(product.price, markup_percent) * qty
+    quote = await PromotionService(session).quote(db_user.id, product, qty, markup_percent)
 
     await message.answer(
         f"🛒 <b>Подтверждение покупки</b>\n\n"
-        f"Товар: {product.name}\n"
+        f"Товар: {escape(product.name)}\n"
         f"Количество: {qty}\n"
-        f"Сумма: <b>{format_price(user_price)}</b>\n\n"
+        f"{quote_text(quote)}\n"
         f"Подтвердить покупку?",
         parse_mode="HTML",
-        reply_markup=confirm_purchase_kb(product_id, qty),
+        reply_markup=confirm_purchase_kb(product_id, qty, quote.payable_price),
     )
 
 
@@ -265,6 +290,11 @@ async def cb_confirm_catalog(
     product_id = int(parts[1])
     qty = int(parts[2])
 
+    if len(parts) != 4:
+        await callback.answer("Обновите карточку товара и подтвердите актуальную цену.", show_alert=True)
+        return
+    expected_price = float(parts[3])
+
     svc = OrderService(session, api, markup_percent)
     request_key = (
         f"catalog:{db_user.id}:{callback.message.chat.id}:"
@@ -277,7 +307,15 @@ async def cb_confirm_catalog(
             product_id=product_id,
             qty=qty,
             request_key=request_key,
+            expected_price=expected_price,
         )
+    except PriceChanged:
+        await callback.message.edit_text(
+            "Цена или доступность купона изменились. Откройте карточку и подтвердите актуальную сумму.",
+            reply_markup=product_card_kb(product_id),
+        )
+        await callback.answer()
+        return
     except InsufficientUserBalance as exc:
         await callback.message.edit_text(  # type: ignore[union-attr]
             f"❌ Недостаточно средств.\n{exc}",

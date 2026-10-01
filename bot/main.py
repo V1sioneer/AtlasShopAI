@@ -11,7 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import get_settings
 from bot.db.engine import close_db, get_session_factory, init_db
-from bot.handlers import admin, balance, catalog, history, order, start
+from bot.handlers import admin, balance, catalog, history, order, promo, start
 from bot.handlers import payment as payment_handler
 from bot.logging_config import setup_logging
 from bot.middlewares.throttling import ThrottlingMiddleware
@@ -120,6 +120,7 @@ async def main() -> None:
     dp.include_router(admin.router)
     dp.include_router(payment_handler.router)
     dp.include_router(start.router)
+    dp.include_router(promo.router)
     dp.include_router(catalog.router)
     dp.include_router(order.router)
     dp.include_router(balance.router)

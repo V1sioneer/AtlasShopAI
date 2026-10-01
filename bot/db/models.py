@@ -148,3 +148,30 @@ class Deposit(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | paid | expired
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+
+class CatalogPromotion(Base):
+    """Limited campaign: one unit of a specified product at supplier price."""
+
+    __tablename__ = "catalog_promotions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    product_id: Mapped[int] = mapped_column(Integer)
+    max_claims: Mapped[int] = mapped_column(Integer)
+    claimed_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class PromotionClaim(Base):
+    __tablename__ = "catalog_promotion_claims"
+    __table_args__ = (
+        UniqueConstraint("promotion_id", "user_id", name="uq_catalog_promo_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    promotion_id: Mapped[int] = mapped_column(ForeignKey("catalog_promotions.id"))
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("orders.id"), unique=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+

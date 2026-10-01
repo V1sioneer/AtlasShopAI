@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.db.models import Order, OrderStatus, OrderType
 from bot.db.repo import OrderRepo, TransactionRepo, UserRepo
 from bot.services.partner_api import ExternalOrder, OrderResult, PartnerAPIClient, PartnerAPIError
-from bot.services.pricing import calculate_user_price
+from bot.services.promotions import PromotionService
+from bot.utils.money import money
 
 
 class InsufficientUserBalance(Exception):
@@ -20,6 +21,10 @@ class DuplicateOrder(Exception):
 
 
 class OrderOutcomeUnknown(Exception):
+    pass
+
+
+class PriceChanged(Exception):
     pass
 
 
@@ -45,6 +50,7 @@ class OrderService:
         variation_id: int | None = None,
         qty: int = 1,
         payload: dict | None = None,
+        promotion_claim_id: int | None = None,
     ) -> Order:
         if await self.orders.get_by_request_key(request_key):
             raise DuplicateOrder("Этот заказ уже был отправлен")
@@ -61,6 +67,12 @@ class OrderService:
                 status=OrderStatus.PENDING,
                 request_key=request_key,
             )
+            if promotion_claim_id is not None:
+                reserved = await PromotionService(self.session).reserve_for_order(
+                    promotion_claim_id, user_id, product_id, order.id
+                )
+                if not reserved:
+                    raise PriceChanged("Купон уже используется в другом заказе. Проверьте цену снова.")
             balance = await self.users.debit(user_id, user_price)
             if balance is None:
                 await self.session.rollback()
@@ -105,6 +117,7 @@ class OrderService:
         )
         if refunded:
             await self.users.update_balance(order.user_id, order.user_price)
+            await PromotionService(self.session).restore_for_order(order.id)
             await self.txns.create(
                 user_id=order.user_id,
                 delta=order.user_price,
@@ -121,10 +134,18 @@ class OrderService:
         qty: int = 1,
         *,
         request_key: str,
+        expected_price: float | None = None,
     ) -> tuple[OrderResult, float]:
+        if await self.orders.get_by_request_key(request_key):
+            raise DuplicateOrder("Этот заказ уже был отправлен")
         product = await self.api.get_product(product_id)
+        if not product.in_stock or product.stock < qty:
+            raise PartnerAPIError("OUT_OF_STOCK", "Товар закончился", 409)
         partner_price = product.price * qty
-        user_price = calculate_user_price(product.price, self.markup) * qty
+        quote = await PromotionService(self.session).quote(user_id, product, qty, self.markup)
+        user_price = quote.payable_price
+        if expected_price is not None and money(expected_price) != money(user_price):
+            raise PriceChanged("Цена или доступность купона изменились. Подтвердите новую цену.")
         order = await self._reserve(
             user_id=user_id,
             order_type=OrderType.CATALOG,
@@ -134,7 +155,13 @@ class OrderService:
             request_key=request_key,
             product_id=product_id,
             qty=qty,
-            payload={"product_id": product_id, "qty": qty},
+            payload={
+                "product_id": product_id, "qty": qty,
+                "regular_price": quote.regular_price,
+                "promo_code": quote.promo_code,
+                "discount": quote.discount,
+            },
+            promotion_claim_id=quote.claim_id,
         )
         try:
             result = await self.api.create_order(product_id, qty)
@@ -199,6 +226,7 @@ class OrderService:
             await self.session.rollback()
             return False
         await self.users.update_balance(order.user_id, order.user_price)
+        await PromotionService(self.session).restore_for_order(order.id)
         await self.txns.create(
             user_id=order.user_id,
             delta=order.user_price,

@@ -28,6 +28,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             ],
             [
                 KeyboardButton(text="ℹ️ Информация"),
+                KeyboardButton(text="🎟 Промокод"),
             ],
         ],
         resize_keyboard=True,
@@ -113,10 +114,11 @@ def catalog_page_kb(
     page: int,
     total_pages: int,
     markup_percent: float,
+    prices: dict[int, float] | None = None,
 ) -> InlineKeyboardMarkup:
     buttons: list[list[InlineKeyboardButton]] = []
     for p in products:
-        user_price = calculate_user_price(p.price, markup_percent)
+        user_price = prices[p.id] if prices is not None else calculate_user_price(p.price, markup_percent)
         stock_icon = "✅" if p.in_stock else "❌"
         buttons.append([
             InlineKeyboardButton(
@@ -176,13 +178,13 @@ def product_card_kb(product_id: int, category: str = "all") -> InlineKeyboardMar
     )
 
 
-def confirm_purchase_kb(product_id: int, qty: int) -> InlineKeyboardMarkup:
+def confirm_purchase_kb(product_id: int, qty: int, price: float) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Подтвердить",
-                    callback_data=f"confirm_catalog:{product_id}:{qty}",
+                    callback_data=f"confirm_catalog:{product_id}:{qty}:{price:.2f}",
                 ),
                 InlineKeyboardButton(
                     text="❌ Отмена",

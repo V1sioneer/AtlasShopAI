@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import structlog
 from aiogram import F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import User
 from bot.db.repo import UserRepo
+from bot.handlers.promo import activate_promotion_message
 from bot.keyboards.kb import help_info_kb, main_menu_kb
 from bot.utils.formatting import format_price
+from bot.services.partner_api import PartnerAPIClient
 
 logger = structlog.get_logger()
 
@@ -24,6 +26,9 @@ async def cmd_start(
     db_user: User,
     session: AsyncSession,
     admin_ids: list[int],
+    command: CommandObject,
+    api: PartnerAPIClient,
+    markup_percent: float,
 ) -> None:
     await state.clear()
     await message.answer(
@@ -36,6 +41,10 @@ async def cmd_start(
         parse_mode="HTML",
         reply_markup=main_menu_kb(),
     )
+    if command.args and command.args.startswith("promo_"):
+        await activate_promotion_message(
+            message, command.args.removeprefix("promo_"), session, db_user, api, markup_percent
+        )
 
     # Уведомление администраторам об активности
     tg_user = message.from_user
