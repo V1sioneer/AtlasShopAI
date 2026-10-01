@@ -23,6 +23,8 @@ from bot.services.background import (
     poll_supplier_checkouts,
 )
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
+from bot.services.aethel_api import AethelAPIClient
+from bot.services.suppliers import SupplierRouter
 from bot.services.payments import CryptoBotPayment, YooKassaPayment
 
 logger = structlog.get_logger()
@@ -72,6 +74,17 @@ async def main() -> None:
             sys.exit(1)
         else:
             logger.warning("api_check_failed", error=str(exc))
+
+    if settings.aethel_api_key and settings.aethel_usd_rub_rate > 0:
+        aethel = AethelAPIClient(settings.aethel_api_base, settings.aethel_api_key,
+                               settings.aethel_usd_rub_rate)
+        try:
+            await aethel.get_balance_usd()
+        except PartnerAPIError as exc:
+            logger.warning("aethel_check_failed", code=exc.code)
+        api = SupplierRouter(api, aethel)
+        logger.info("supplier_routing_enabled", gemini="aethel", chatgpt="aethel",
+                    claude="thegodshop", usd_rub_rate=settings.aethel_usd_rub_rate)
 
     # ── Init Bot & Dispatcher ────────────────────────────────────────
     bot_kwargs: dict = {

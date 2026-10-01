@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+import json
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +53,7 @@ class OrderService:
         qty: int = 1,
         payload: dict | None = None,
         promotion_claim_id: int | None = None,
+        supplier: str = "thegodshop",
     ) -> Order:
         if await self.orders.get_by_request_key(request_key):
             raise DuplicateOrder("Этот заказ уже был отправлен")
@@ -68,6 +70,7 @@ class OrderService:
                 status=OrderStatus.PENDING,
                 request_key=request_key,
             )
+            order.supplier = supplier
             if promotion_claim_id is not None:
                 reserved = await PromotionService(self.session).reserve_for_order(
                     promotion_claim_id, user_id, product_id, order.id
@@ -101,6 +104,10 @@ class OrderService:
     async def _provider_failed(self, order: Order, exc: Exception) -> None:
         unknown = not isinstance(exc, PartnerAPIError) or exc.outcome_unknown
         if unknown:
+            if hasattr(exc, "supplier_receipt"):
+                payload = json.loads(order.payload_json or "{}")
+                payload["supplier_receipt"] = exc.supplier_receipt
+                order.payload_json = json.dumps(payload, ensure_ascii=False)
             await self.orders.transition(
                 order.id,
                 [OrderStatus.PENDING],
@@ -148,7 +155,11 @@ class OrderService:
         user_price = quote.payable_price
         if expected_price is not None and money(expected_price) != money(user_price):
             raise PriceChanged("Цена или доступность купона изменились. Подтвердите новую цену.")
-        await require_supplier_funds(self.session, self.api, partner_price)
+        prepare = getattr(self.api, "prepare_catalog_purchase", None)
+        if prepare is not None:
+            await prepare(self.session, product, qty, partner_price)
+        else:
+            await require_supplier_funds(self.session, self.api, partner_price)
         order = await self._reserve(
             user_id=user_id,
             order_type=OrderType.CATALOG,
@@ -163,20 +174,29 @@ class OrderService:
                 "regular_price": quote.regular_price,
                 "promo_code": quote.promo_code,
                 "discount": quote.discount,
+                "supplier": product.supplier,
+                "supplier_product_id": abs(product.id),
+                "price_usd": product.price_usd,
+                "usd_rub_rate": product.usd_rub_rate,
+                "product_name": product.name,
             },
             promotion_claim_id=quote.claim_id,
+            supplier=product.supplier,
         )
         try:
-            result = await self.api.create_order(product_id, qty)
+            purchase = getattr(self.api, "purchase_catalog", None)
+            result = (await purchase(product, qty, request_key) if purchase is not None
+                      else await self.api.create_order(product_id, qty))
         except Exception as exc:
             await self._provider_failed(order, exc)
             raise AssertionError("unreachable")
         await self.orders.update_status(
             order.id,
             OrderStatus.SUCCESS,
-            partner_order_id=result.order_id,
+            partner_order_id=result.order_id if isinstance(result.order_id, int) else None,
             delivered_data=result.delivered_data,
         )
+        order.supplier_order_ref = str(result.order_id)
         await self.session.commit()
         return result, user_price
 

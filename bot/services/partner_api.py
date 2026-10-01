@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 import httpx
 import structlog
@@ -21,10 +21,15 @@ class Product(BaseModel):
     in_stock: bool
     stock: int
     category: str = ""
+    supplier: str = "thegodshop"
+    description: str = ""
+    price_usd: str | None = None
+    usd_rub_rate: str | None = None
+    direct_payment_supported: bool = True
 
 
 class OrderResult(BaseModel):
-    order_id: int = Field(gt=0)
+    order_id: Annotated[int, Field(gt=0)] | Annotated[str, Field(min_length=1, max_length=128)]
     delivered_data: Optional[str] = None
     price: float = Field(ge=0, allow_inf_nan=False)
 

@@ -16,6 +16,10 @@ def upgrade_schema(connection) -> None:
     columns = {column["name"] for column in inspect(connection).get_columns("orders")}
     if "request_key" not in columns:
         connection.execute(text("ALTER TABLE orders ADD COLUMN request_key VARCHAR(255)"))
+    if "supplier" not in columns:
+        connection.execute(text("ALTER TABLE orders ADD COLUMN supplier VARCHAR(32) NOT NULL DEFAULT 'thegodshop'"))
+    if "supplier_order_ref" not in columns:
+        connection.execute(text("ALTER TABLE orders ADD COLUMN supplier_order_ref VARCHAR(128)"))
     connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_orders_request_key ON orders (request_key)"))
     connection.execute(
         text(

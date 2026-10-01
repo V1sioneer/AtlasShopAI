@@ -67,6 +67,8 @@ class SupplierCheckoutService:
         if existing:
             return existing
         product = await self.api.get_product(product_id)
+        if not product.direct_payment_supported:
+            raise CheckoutError("Этот поставщик не поддерживает оплату напрямую. Счёт не создан.")
         if not product.in_stock or product.stock < 1:
             raise CheckoutError("Товар закончился. Счёт не создан, купон сохранён.")
         quote = await self.promotions.quote(user_id, product, 1, self.markup)

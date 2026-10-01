@@ -71,6 +71,8 @@ class Order(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     partner_order_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    supplier: Mapped[str] = mapped_column(String(32), default="thegodshop", server_default="thegodshop")
+    supplier_order_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     type: Mapped[OrderType] = mapped_column(Enum(OrderType))
     product_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     variation_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

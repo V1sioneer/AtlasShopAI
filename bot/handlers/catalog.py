@@ -7,7 +7,7 @@ import structlog
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import User
@@ -52,7 +52,7 @@ def quote_text(quote: CatalogQuote) -> str:
 
 
 def direct_available(quote: CatalogQuote, product: Product, qty: int, enabled: bool) -> bool:
-    return enabled and qty == 1 and quote.claim_id is not None and (
+    return enabled and product.direct_payment_supported and qty == 1 and quote.claim_id is not None and (
         money(quote.payable_price) == money(product.price)
     )
 
@@ -181,6 +181,8 @@ async def cb_product_card(
         f"{quote_text(quote)}"
         f"📊 {stock_text}\n"
     )
+    if product.description:
+        text += "\n<b>Условия товара</b>\n" + escape(product.description)
 
     await callback.message.edit_text(  # type: ignore[union-attr]
         text,
@@ -384,14 +386,23 @@ async def cb_confirm_catalog(
         return
 
     delivered = result.delivered_data or "—"
+    saved_order = await svc.orders.get_by_request_key(request_key)
+    order_number = saved_order.id if saved_order else result.order_id
+    inline_data = escape(delivered)
+    long_delivery = len(inline_data) > 2800
+    delivery_text = ("Данные заказа отправлены файлом ниже. Их также можно скачать в истории."
+                     if long_delivery else f"<code>{inline_data}</code>")
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"✅ <b>Покупка успешна!</b>\n\n"
         f"💰 Списано: {format_price(user_price)}\n"
-        f"📦 Заказ #{result.order_id}\n\n"
+        f"📦 Заказ #{order_number}\n\n"
         f"🔑 Ваши данные:\n"
-        f"<code>{delivered}</code>",
+        f"{delivery_text}",
         parse_mode="HTML",
     )
+    if long_delivery:
+        await callback.message.answer_document(BufferedInputFile(
+            delivered.encode("utf-8"), filename=f"atlas-order-{order_number}.txt"))
     await callback.answer()
 
     if callback.bot:
@@ -404,7 +415,7 @@ async def cb_confirm_catalog(
                     f"🛒 <b>НОВАЯ ПОКУПКА В КАТАЛОГЕ!</b>\n\n"
                     f"👤 Покупатель: <b>{name}</b> ({uname})\n"
                     f"🆔 ID: <code>{db_user.id}</code>\n"
-                    f"📦 Заказ: #{result.order_id}\n"
+                    f"📦 Заказ: #{order_number}\n"
                     f"💰 Сумма: <b>{format_price(user_price)}</b>",
                     parse_mode="HTML",
                 )

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     steam_max_amount: int = 15000
     proxy_url: str | None = None
     direct_supplier_checkout_enabled: bool = True
+    aethel_api_key: str = ""
+    aethel_api_base: str = "https://mail-api.hvmforum.space/api"
+    aethel_usd_rub_rate: float = Field(default=0, ge=0, allow_inf_nan=False)
 
     # Payment providers
     cryptobot_token: str = ""  # from @CryptoBot -> My Apps
