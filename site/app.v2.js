@@ -1,77 +1,39 @@
-// AtlasShop Interactive App Scripts
 document.addEventListener("DOMContentLoaded", () => {
+  const tabs = [...document.querySelectorAll(".tab-btn")];
+  const products = [...document.querySelectorAll(".product-row")];
 
-  // Передаём источник перехода в Telegram для дальнейшей аналитики.
-  document.querySelectorAll('a[href="https://t.me/AtlasShopAI_bot"]').forEach(link => {
-    link.setAttribute("href", "https://t.me/AtlasShopAI_bot?start=landing");
-  });
-
-  // 1. Category Filter Tabs
-  const tabButtons = document.querySelectorAll(".tab-btn");
-  const cards = document.querySelectorAll(".bento-grid .glass-card");
-
-  tabButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      tabButtons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      tabButtons.forEach(b => b.setAttribute("aria-selected", String(b === btn)));
-
-      const filter = btn.getAttribute("data-filter");
-
-      cards.forEach(card => {
-        const category = card.getAttribute("data-category");
-        if (filter === "all" || category === filter) {
-          card.style.display = "flex";
-          card.style.opacity = "1";
-          card.style.transform = "translateY(0)";
-        } else {
-          card.style.display = "none";
-        }
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const filter = tab.dataset.filter;
+      tabs.forEach((item) => {
+        const selected = item === tab;
+        item.classList.toggle("active", selected);
+        item.setAttribute("aria-pressed", String(selected));
+      });
+      products.forEach((product) => {
+        product.hidden = filter !== "all" && product.dataset.category !== filter;
       });
     });
   });
 
-  // 2. FAQ Accordion
-  const faqItems = document.querySelectorAll(".faq-item");
-  faqItems.forEach(item => {
-    const questionBtn = item.querySelector(".faq-question");
+  const faqItems = [...document.querySelectorAll(".faq-item")];
+  faqItems.forEach((item) => {
+    const button = item.querySelector(".faq-question");
     const answer = item.querySelector(".faq-answer");
-
-    questionBtn.addEventListener("click", () => {
-      const isActive = item.classList.contains("active");
-
-      // Close all others
-      faqItems.forEach(other => {
-        other.classList.remove("active");
-        const otherQuestion = other.querySelector(".faq-question");
-        if (otherQuestion) otherQuestion.setAttribute("aria-expanded", "false");
+    button.addEventListener("click", () => {
+      const open = button.getAttribute("aria-expanded") !== "true";
+      faqItems.forEach((other) => {
+        const otherButton = other.querySelector(".faq-question");
         const otherAnswer = other.querySelector(".faq-answer");
-        if (otherAnswer) otherAnswer.style.maxHeight = null;
+        other.classList.remove("active");
+        otherButton.setAttribute("aria-expanded", "false");
+        otherAnswer.style.maxHeight = null;
       });
-
-      // Toggle current
-      if (!isActive) {
+      if (open) {
         item.classList.add("active");
-        questionBtn.setAttribute("aria-expanded", "true");
-        answer.style.maxHeight = answer.scrollHeight + "px";
-      } else {
-        item.classList.remove("active");
-        answer.style.maxHeight = null;
+        button.setAttribute("aria-expanded", "true");
+        answer.style.maxHeight = `${answer.scrollHeight}px`;
       }
     });
   });
-
-  // 3. Subtle Caustic Mouse Glow on Glass Cards (Desktop only)
-  if (window.matchMedia("(pointer: fine)").matches) {
-    cards.forEach(card => {
-      card.addEventListener("mousemove", e => {
-        const rect = card.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        card.style.setProperty("--mouse-x", `${x}px`);
-        card.style.setProperty("--mouse-y", `${y}px`);
-      });
-    });
-  }
-
 });
