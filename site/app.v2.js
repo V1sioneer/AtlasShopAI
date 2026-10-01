@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const y = rect.top + rect.height / 2;
       const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
       switchingTheme = true;
-      themeToggle.disabled = true;
+      themeToggle.setAttribute("aria-disabled", "true");
       root.classList.add("theme-reveal");
       let transition;
       try {
@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
         applyTheme(theme);
       } finally {
         root.classList.remove("theme-reveal");
-        themeToggle.disabled = false;
+        themeToggle.removeAttribute("aria-disabled");
         switchingTheme = false;
       }
     });

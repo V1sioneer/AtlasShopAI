@@ -86,7 +86,7 @@
 .theme-toggle:hover { border-color: var(--accent); transform: translateY(-2px); }
 .theme-toggle:active { transform: scale(.95); }
 .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.theme-toggle:disabled { cursor: default; }
+.theme-toggle[aria-disabled="true"] { cursor: default; }
 .theme-icon { position: absolute; transition: opacity .25s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
 .theme-icon-moon { opacity: 1; transform: rotate(0) scale(1); }
 .theme-icon-sun { opacity: 0; transform: rotate(-90deg) scale(.5); }
