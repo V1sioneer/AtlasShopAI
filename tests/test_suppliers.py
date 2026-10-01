@@ -259,3 +259,22 @@ async def test_history_download_is_owned_and_html_is_escaped(sessions):
         await cb_order_data(callback, session, SimpleNamespace(id=1))
         document = callback.message.answer_document.call_args.args[0]
         assert document.data == b"secret<key>&"
+
+
+@pytest.mark.asyncio
+async def test_aethel_promotion_uses_own_sku_and_preserves_payment_restriction(sessions):
+    from bot.services.promotions import PromotionService
+    api = client(lambda request: httpx.Response(200, json=catalog()))
+    try:
+        async with sessions() as session:
+            service = PromotionService(session)
+            await service.create("AETHEL_TEST", -2, 10)
+            await service.activate("AETHEL_TEST", 1)
+            product = await api.get_product(-2)
+            quote = await service.quote(1, product, 1, 15)
+            assert quote.payable_price == 43.5 and quote.regular_price == 51
+            assert not direct_available(quote, product, 1, True)
+            other = Product(id=2, name="Claude", price=2200, stock=3, in_stock=True)
+            assert (await service.quote(1, other, 1, 15)).claim_id is None
+    finally:
+        await api.close()

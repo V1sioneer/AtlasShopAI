@@ -46,7 +46,7 @@ class PromotionService:
         )
 
     async def create(self, code: str, product_id: int, limit: int) -> CatalogPromotion:
-        if product_id <= 0 or not 1 <= limit <= 1000:
+        if product_id == 0 or not 1 <= limit <= 1000:
             raise PromotionError("Укажите ID товара и лимит от 1 до 1000.")
         campaign = CatalogPromotion(code=self.normalize(code), product_id=product_id, max_claims=limit)
         self.session.add(campaign)
