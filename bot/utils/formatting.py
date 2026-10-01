@@ -6,6 +6,9 @@ from bot.db.models import OrderStatus
 
 
 STATUS_EMOJI = {
+    OrderStatus.WAITING_PAYMENT: "💳",
+    OrderStatus.ATTENTION: "🛠",
+    OrderStatus.EXPIRED: "⌛",
     OrderStatus.PENDING: "⏳",
     OrderStatus.PROCESSING: "🔄",
     OrderStatus.SUCCESS: "✅",
@@ -24,6 +27,9 @@ def format_price(amount: float) -> str:
 def format_status(status: OrderStatus) -> str:
     emoji = STATUS_EMOJI.get(status, "❓")
     labels = {
+        OrderStatus.WAITING_PAYMENT: "Ожидает оплаты",
+        OrderStatus.ATTENTION: "Требуется помощь поддержки",
+        OrderStatus.EXPIRED: "Счёт истёк",
         OrderStatus.PENDING: "Ожидание",
         OrderStatus.PROCESSING: "В обработке",
         OrderStatus.SUCCESS: "Выполнен",

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     steam_min_amount: int = 100
     steam_max_amount: int = 15000
     proxy_url: str | None = None
+    direct_supplier_checkout_enabled: bool = True
 
     # Payment providers
     cryptobot_token: str = ""  # from @CryptoBot -> My Apps

@@ -75,6 +75,7 @@ async def cmd_admin_stats(
         f"• <code>/promo_create КОД ID ЛИМИТ</code> — товар без наценки\n"
         f"• <code>/promo_stats КОД</code> — статистика акции\n"
         f"• <code>/promo_disable КОД</code> — остановить новые активации\n"
+        f"• <code>/direct_stats</code> — счета прямой оплаты и выдачи\n"
         f"• <code>/broadcast ТЕКСТ</code> — рассылка всем пользователям\n"
         f"• <code>/partner_balance</code> — проверить баланс поставщика\n"
         f"• <code>/deposit_crypto 1000</code> — пополнить баланс API"
@@ -384,10 +385,11 @@ async def cmd_check_deposit(
         return
 
     status_emoji = "✅" if result.status == "paid" else "⏳"
+    crypto_amount = f" ({result.amount_usdt} USDT)" if result.amount_usdt is not None else ""
     await message.answer(
         f"💳 <b>Статус депозита #{deposit_id}</b>\n\n"
         f"Статус: {status_emoji} {result.status}\n"
-        f"Сумма: {format_price(result.amount_rub)} ({result.amount_usdt} USDT)",
+        f"Сумма: {format_price(result.amount_rub)}{crypto_amount}",
         parse_mode="HTML",
     )
 

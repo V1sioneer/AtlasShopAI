@@ -31,6 +31,9 @@ class OrderType(str, enum.Enum):
 
 
 class OrderStatus(str, enum.Enum):
+    WAITING_PAYMENT = "waiting_payment"
+    ATTENTION = "attention"
+    EXPIRED = "expired"
     PENDING = "pending"
     PROCESSING = "processing"
     SUCCESS = "success"
@@ -174,4 +177,24 @@ class PromotionClaim(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("orders.id"), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class SupplierCheckout(Base):
+    """Customer-funded catalog order; money never credits the bot's wallet."""
+
+    __tablename__ = "supplier_checkouts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), unique=True)
+    deposit_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, nullable=True)
+    amount_rub: Mapped[float] = mapped_column(Float)
+    amount_usdt: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pay_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="creating")
+    supplier_paid: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    error_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    user_notified_status: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    admin_notified_status: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 
 import httpx
 import structlog
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, Field, ValidationError
 
 logger = structlog.get_logger()
 
@@ -24,13 +24,13 @@ class Product(BaseModel):
 
 
 class OrderResult(BaseModel):
-    order_id: int
+    order_id: int = Field(gt=0)
     delivered_data: Optional[str] = None
-    price: float
+    price: float = Field(ge=0, allow_inf_nan=False)
 
 
 class Balance(BaseModel):
-    balance: float
+    balance: float = Field(ge=0, allow_inf_nan=False)
     discount_percent: float
 
 
@@ -39,9 +39,19 @@ class DepositResult(BaseModel):
     pay_url: Optional[str] = None
     wallet: Optional[str] = None
     memo: Optional[str] = None
-    amount_usdt: float
-    amount_rub: float
+    amount_usdt: float = Field(gt=0, allow_inf_nan=False)
+    amount_rub: float = Field(gt=0, allow_inf_nan=False)
     status: Optional[str] = None
+
+
+class PartnerDepositStatus(BaseModel):
+    deposit_id: int
+    amount_rub: float = Field(
+        gt=0, allow_inf_nan=False, validation_alias=AliasChoices("amount", "amount_rub")
+    )
+    status: str
+    method: str
+    amount_usdt: float | None = None
 
 
 class ExternalOrder(BaseModel):
@@ -247,7 +257,10 @@ class PartnerAPIClient:
 
     async def get_balance(self) -> Balance:
         data = await self._request("GET", "/api/v1/account/balance")
-        return Balance(**data)
+        try:
+            return Balance(**data)
+        except ValidationError as exc:
+            raise PartnerAPIError("INVALID_RESPONSE", "Не удалось проверить баланс поставщика") from exc
 
     async def get_history(self, limit: int = 20) -> list[dict[str, Any]]:
         data = await self._request(
@@ -263,7 +276,7 @@ class PartnerAPIClient:
             "/api/v1/account/deposit/crypto",
             json_body={"amount_rub": amount_rub},
         )
-        return DepositResult(**data)
+        return self._order_response(DepositResult, data)
 
     async def deposit_ton(self, amount_rub: float) -> DepositResult:
         data = await self._request(
@@ -271,13 +284,16 @@ class PartnerAPIClient:
             "/api/v1/account/deposit/ton",
             json_body={"amount_rub": amount_rub},
         )
-        return DepositResult(**data)
+        return self._order_response(DepositResult, data)
 
-    async def get_deposit(self, deposit_id: int) -> DepositResult:
+    async def get_deposit(self, deposit_id: int) -> PartnerDepositStatus:
         data = await self._request(
             "GET", f"/api/v1/account/deposit/{deposit_id}"
         )
-        return DepositResult(**data)
+        try:
+            return PartnerDepositStatus(**data)
+        except ValidationError as exc:
+            raise PartnerAPIError("INVALID_RESPONSE", "Не удалось проверить платёж поставщика") from exc
 
 
     # ── Steam ────────────────────────────────────────────────────────

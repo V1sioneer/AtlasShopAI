@@ -9,6 +9,7 @@ from bot.db.models import Order, OrderStatus, OrderType
 from bot.db.repo import OrderRepo, TransactionRepo, UserRepo
 from bot.services.partner_api import ExternalOrder, OrderResult, PartnerAPIClient, PartnerAPIError
 from bot.services.promotions import PromotionService
+from bot.services.supplier_funding import require_supplier_funds, with_supplier_spend_lock
 from bot.utils.money import money
 
 
@@ -127,6 +128,7 @@ class OrderService:
         await self.session.commit()
         raise exc
 
+    @with_supplier_spend_lock
     async def buy_catalog_product(
         self,
         user_id: int,
@@ -141,11 +143,12 @@ class OrderService:
         product = await self.api.get_product(product_id)
         if not product.in_stock or product.stock < qty:
             raise PartnerAPIError("OUT_OF_STOCK", "Товар закончился", 409)
-        partner_price = product.price * qty
+        partner_price = float(money(product.price) * qty)
         quote = await PromotionService(self.session).quote(user_id, product, qty, self.markup)
         user_price = quote.payable_price
         if expected_price is not None and money(expected_price) != money(user_price):
             raise PriceChanged("Цена или доступность купона изменились. Подтвердите новую цену.")
+        await require_supplier_funds(self.session, self.api, partner_price)
         order = await self._reserve(
             user_id=user_id,
             order_type=OrderType.CATALOG,
@@ -177,6 +180,7 @@ class OrderService:
         await self.session.commit()
         return result, user_price
 
+    @with_supplier_spend_lock
     async def buy_external(
         self,
         user_id: int,
@@ -191,6 +195,7 @@ class OrderService:
         variation_id: int | None = None,
         payload: dict | None = None,
     ) -> tuple[ExternalOrder, int]:
+        await require_supplier_funds(self.session, self.api, partner_price)
         order = await self._reserve(
             user_id=user_id,
             order_type=order_type,

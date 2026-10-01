@@ -178,12 +178,16 @@ def product_card_kb(product_id: int, category: str = "all") -> InlineKeyboardMar
     )
 
 
-def confirm_purchase_kb(product_id: int, qty: int, price: float) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+def confirm_purchase_kb(product_id: int, qty: int, price: float, direct: bool = False) -> InlineKeyboardMarkup:
+    rows = []
+    if direct:
+        rows.append([InlineKeyboardButton(
+            text="💳 Оплатить криптой напрямую", callback_data=f"supplier_checkout:{product_id}:{qty}:{price:.2f}"
+        )])
+    rows.extend([
             [
                 InlineKeyboardButton(
-                    text="✅ Подтвердить",
+                    text="💰 Купить с баланса" if direct else "✅ Подтвердить",
                     callback_data=f"confirm_catalog:{product_id}:{qty}:{price:.2f}",
                 ),
                 InlineKeyboardButton(
@@ -191,8 +195,8 @@ def confirm_purchase_kb(product_id: int, qty: int, price: float) -> InlineKeyboa
                     callback_data="cancel_purchase",
                 ),
             ],
-        ]
-    )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 
@@ -271,7 +275,9 @@ def history_page_kb(page: int, total_pages: int) -> InlineKeyboardMarkup:
         nav.append(
             InlineKeyboardButton(text="➡️", callback_data=f"history_page:{page + 1}")
         )
-    return InlineKeyboardMarkup(inline_keyboard=[nav] if nav else [])
+    rows = [nav] if nav else []
+    rows.append([InlineKeyboardButton(text="💳 Счета прямой оплаты", callback_data="direct_list")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ── Generic ──────────────────────────────────────────────────────────

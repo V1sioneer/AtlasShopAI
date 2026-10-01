@@ -3,15 +3,19 @@ from __future__ import annotations
 import asyncio
 
 import structlog
+from html import escape
 from aiogram import Bot
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
-from bot.db.models import OrderStatus
+from bot.db.models import OrderStatus, SupplierCheckout
 from bot.db.repo import DepositRepo, OrderRepo, PartnerDepositRepo, TransactionRepo, UserRepo
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
 from bot.services.payments import CryptoBotPayment, YooKassaPayment
 from bot.services.settlement import InvalidPayment, expire_payment, settle_payment
 from bot.utils.formatting import format_price
+from bot.utils.money import money
+from bot.services.supplier_checkout import SupplierCheckoutService
 
 logger = structlog.get_logger()
 
@@ -195,6 +199,13 @@ async def poll_partner_deposits(
                         continue
 
                     if result.status == "paid":
+                        if (
+                            result.deposit_id != dep.deposit_id_partner
+                            or money(result.amount_rub) != money(dep.amount_rub)
+                            or result.method != dep.method
+                        ):
+                            logger.warning("partner_deposit_mismatch", deposit_id=dep.deposit_id_partner)
+                            continue
                         await dep_repo.update_status(
                             dep.deposit_id_partner, "paid"
                         )
@@ -218,6 +229,9 @@ async def poll_partner_deposits(
                             deposit_id=dep.deposit_id_partner,
                             amount_rub=dep.amount_rub,
                         )
+                    elif result.status in ("expired", "cancelled", "canceled"):
+                        await dep_repo.update_status(dep.deposit_id_partner, "expired")
+                        await session.commit()
 
         except asyncio.CancelledError:
             logger.info("poll_partner_deposits_cancelled")
@@ -225,6 +239,79 @@ async def poll_partner_deposits(
         except Exception as exc:
             logger.error("poll_partner_deposits_error", error=str(exc))
             await asyncio.sleep(30)
+
+
+async def process_supplier_checkouts_once(
+    bot: Bot, session_factory: async_sessionmaker[AsyncSession], api: PartnerAPIClient,
+    admin_ids: list[int], markup_percent: float,
+) -> None:
+    from bot.handlers.supplier_checkout import checkout_view
+    terminal = ("delivered", "attention", "expired", "refunded")
+    async with session_factory() as session:
+        ids = (await session.scalars(select(SupplierCheckout.id).where(or_(
+            SupplierCheckout.status == "awaiting_payment",
+            and_(SupplierCheckout.status.in_(terminal), or_(
+                SupplierCheckout.user_notified_status != SupplierCheckout.status,
+                SupplierCheckout.admin_notified_status != SupplierCheckout.status,
+            )),
+        )))).all()
+    for checkout_id in ids:
+        async with session_factory() as session:
+            service = SupplierCheckoutService(session, api, markup_percent)
+            try:
+                checkout, order = await service.get(checkout_id)
+                if checkout.status == "awaiting_payment":
+                    checkout, order = await service.check(checkout_id)
+                if checkout.status not in terminal:
+                    continue
+                status = checkout.status
+                text, keyboard = checkout_view(checkout, order)
+                await session.commit()
+                if checkout.user_notified_status != status:
+                    try:
+                        await bot.send_message(order.user_id, text, reply_markup=keyboard, parse_mode="HTML")
+                    except Exception:
+                        logger.warning("direct_order_user_notification_failed", checkout_id=checkout_id)
+                    else:
+                        checkout.user_notified_status = status
+                        await session.commit()
+                if checkout.admin_notified_status != status:
+                    all_sent = True
+                    for aid in admin_ids:
+                        try:
+                            await bot.send_message(
+                                aid,
+                                f"🧾 <b>Прямая оплата: {escape(status)}</b>\n"
+                                f"Заказ #{order.id}, ID счёта {checkout.id}\n"
+                                f"Покупатель: <code>{order.user_id}</code>\n"
+                                f"Сумма: {format_price(checkout.amount_rub)}\n"
+                                f"Причина: {escape(checkout.error_code or '—')}\n"
+                                f"Подробности: /direct_order {checkout.id}",
+                                parse_mode="HTML",
+                            )
+                        except Exception:
+                            all_sent = False
+                    if all_sent:
+                        checkout.admin_notified_status = status
+                        await session.commit()
+            except Exception as exc:
+                await session.rollback()
+                logger.warning("direct_checkout_check_failed", checkout_id=checkout_id, error=type(exc).__name__)
+
+
+async def poll_supplier_checkouts(
+    bot: Bot, session_factory: async_sessionmaker[AsyncSession], api: PartnerAPIClient,
+    admin_ids: list[int], markup_percent: float, interval: float = 15.0,
+) -> None:
+    logger.info("background_task_started", task="poll_supplier_checkouts")
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await process_supplier_checkouts_once(bot, session_factory, api, admin_ids, markup_percent)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.error("poll_supplier_checkouts_failed", error=type(exc).__name__)
 
 
 async def poll_user_deposits(

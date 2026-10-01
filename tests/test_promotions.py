@@ -232,7 +232,9 @@ async def test_purchase_screen_and_callback_carry_discounted_total(sessions):
         args = callback.message.edit_text.call_args
         assert "100 ₽" in args.args[0] and "115 ₽" in args.args[0]
         keyboard = args.kwargs["reply_markup"]
-        assert keyboard.inline_keyboard[0][0].callback_data == "confirm_catalog:38:1:100.00"
+        callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+        assert "confirm_catalog:38:1:100.00" in callbacks
+        assert "supplier_checkout:38:1:100.00" in callbacks
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import event, inspect, text, update
+from sqlalchemy import event, inspect, select, text, update
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from bot.db.models import Base, Order, OrderStatus
+from bot.db.models import Base, Order, OrderStatus, PromotionClaim, SupplierCheckout
 
 
 def upgrade_schema(connection) -> None:
@@ -55,11 +55,39 @@ async def init_db(database_url: str) -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(upgrade_schema)
+        # An invoice interrupted before its link was persisted could not have
+        # been shown to the buyer. Release only these unfunded coupon intents.
+        interrupted_invoice_orders = select(SupplierCheckout.order_id).where(
+            SupplierCheckout.status == "creating", SupplierCheckout.deposit_id.is_(None),
+            SupplierCheckout.supplier_paid.is_(False),
+        )
+        await conn.execute(update(PromotionClaim).where(
+            PromotionClaim.order_id.in_(interrupted_invoice_orders)
+        ).values(order_id=None))
+        await conn.execute(update(Order).where(
+            Order.id.in_(interrupted_invoice_orders), Order.status == OrderStatus.WAITING_PAYMENT,
+        ).values(status=OrderStatus.FAILED, error_code="INVOICE_CREATION_INTERRUPTED"))
+        await conn.execute(update(SupplierCheckout).where(
+            SupplierCheckout.order_id.in_(interrupted_invoice_orders)
+        ).values(status="failed", error_code="INVOICE_CREATION_INTERRUPTED"))
         # A process may have died after the provider accepted a request. Never
         # submit it again or refund it until its outcome has been reconciled.
         await conn.execute(
             update(Order).where(Order.status == OrderStatus.PENDING)
             .values(status=OrderStatus.UNCERTAIN, error_code="PROCESS_INTERRUPTED")
+        )
+        # A stored invoice or an interrupted purchase needs manual review.
+        await conn.execute(
+            update(SupplierCheckout).where(SupplierCheckout.status.in_(["creating", "fulfilling"]))
+            .values(status="attention", error_code="PROCESS_INTERRUPTED")
+        )
+        await conn.execute(
+            update(Order).where(
+                Order.id.in_(select(SupplierCheckout.order_id).where(
+                    SupplierCheckout.status == "attention", SupplierCheckout.error_code == "PROCESS_INTERRUPTED"
+                )),
+                Order.status == OrderStatus.WAITING_PAYMENT,
+            ).values(status=OrderStatus.ATTENTION, error_code="PROCESS_INTERRUPTED")
         )
 
 

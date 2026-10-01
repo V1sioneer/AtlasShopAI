@@ -27,6 +27,7 @@ from bot.services.orders import (
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError, Product
 from bot.services.promotions import CatalogQuote, PromotionService
 from bot.utils.formatting import format_price
+from bot.utils.money import money
 
 logger = structlog.get_logger()
 
@@ -47,6 +48,12 @@ def quote_text(quote: CatalogQuote) -> str:
         f"Промокод {escape(quote.promo_code)}: −{format_price(quote.discount)}\n"
         "Одна штука по закупочной цене, без наценки магазина.\n"
         f"К оплате: <b>{format_price(quote.payable_price)}</b>\n"
+    )
+
+
+def direct_available(quote: CatalogQuote, product: Product, qty: int, enabled: bool) -> bool:
+    return enabled and qty == 1 and quote.claim_id is not None and (
+        money(quote.payable_price) == money(product.price)
     )
 
 
@@ -193,6 +200,7 @@ async def cb_buy_catalog(
     markup_percent: float,
     session: AsyncSession,
     db_user: User,
+    direct_supplier_checkout_enabled: bool = True,
 ) -> None:
     parts = callback.data.split(":")  # type: ignore[union-attr]
     product_id = int(parts[1])
@@ -205,15 +213,18 @@ async def cb_buy_catalog(
         return
 
     quote = await PromotionService(session).quote(db_user.id, product, qty, markup_percent)
+    direct = direct_available(quote, product, qty, direct_supplier_checkout_enabled)
+    payment_note = "Можно оплатить криптовалютой напрямую, без пополнения баланса бота.\n\n" if direct else ""
 
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"🛒 <b>Подтверждение покупки</b>\n\n"
         f"Товар: {escape(product.name)}\n"
         f"Количество: {qty}\n"
         f"{quote_text(quote)}\n"
+        f"{payment_note}"
         f"Подтвердить покупку?",
         parse_mode="HTML",
-        reply_markup=confirm_purchase_kb(product_id, qty, quote.payable_price),
+        reply_markup=confirm_purchase_kb(product_id, qty, quote.payable_price, direct),
     )
     await callback.answer()
 
@@ -244,6 +255,7 @@ async def process_qty(
     markup_percent: float,
     session: AsyncSession,
     db_user: User,
+    direct_supplier_checkout_enabled: bool = True,
 ) -> None:
     text = message.text or ""
     if not text.isdigit() or int(text) < 1 or int(text) > 99:
@@ -262,15 +274,18 @@ async def process_qty(
         return
 
     quote = await PromotionService(session).quote(db_user.id, product, qty, markup_percent)
+    direct = direct_available(quote, product, qty, direct_supplier_checkout_enabled)
+    payment_note = "Можно оплатить криптовалютой напрямую, без пополнения баланса бота.\n\n" if direct else ""
 
     await message.answer(
         f"🛒 <b>Подтверждение покупки</b>\n\n"
         f"Товар: {escape(product.name)}\n"
         f"Количество: {qty}\n"
         f"{quote_text(quote)}\n"
+        f"{payment_note}"
         f"Подтвердить покупку?",
         parse_mode="HTML",
-        reply_markup=confirm_purchase_kb(product_id, qty, quote.payable_price),
+        reply_markup=confirm_purchase_kb(product_id, qty, quote.payable_price, direct),
     )
 
 

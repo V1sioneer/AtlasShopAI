@@ -11,7 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import get_settings
 from bot.db.engine import close_db, get_session_factory, init_db
-from bot.handlers import admin, balance, catalog, history, order, promo, start
+from bot.handlers import admin, balance, catalog, history, order, promo, start, supplier_checkout
 from bot.handlers import payment as payment_handler
 from bot.logging_config import setup_logging
 from bot.middlewares.throttling import ThrottlingMiddleware
@@ -20,6 +20,7 @@ from bot.services.background import (
     poll_external_orders,
     poll_partner_deposits,
     poll_user_deposits,
+    poll_supplier_checkouts,
 )
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
 from bot.services.payments import CryptoBotPayment, YooKassaPayment
@@ -100,6 +101,7 @@ async def main() -> None:
     dp["session_factory"] = session_factory
     dp["steam_min_amount"] = settings.steam_min_amount
     dp["steam_max_amount"] = settings.steam_max_amount
+    dp["direct_supplier_checkout_enabled"] = settings.direct_supplier_checkout_enabled
 
     # ── Init payment providers ───────────────────────────────────────
     cryptobot: CryptoBotPayment | None = None
@@ -121,6 +123,7 @@ async def main() -> None:
     dp.include_router(payment_handler.router)
     dp.include_router(start.router)
     dp.include_router(promo.router)
+    dp.include_router(supplier_checkout.router)
     dp.include_router(catalog.router)
     dp.include_router(order.router)
     dp.include_router(balance.router)
@@ -128,6 +131,11 @@ async def main() -> None:
 
     # ── Start background tasks ───────────────────────────────────────
     bg_tasks: list[asyncio.Task] = []
+
+    bg_tasks.append(asyncio.create_task(poll_supplier_checkouts(
+        bot=bot, session_factory=session_factory, api=api,
+        admin_ids=settings.admin_ids, markup_percent=settings.markup_percent,
+    )))
 
     bg_tasks.append(
         asyncio.create_task(
