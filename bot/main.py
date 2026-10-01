@@ -25,6 +25,7 @@ from bot.services.background import (
 from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
 from bot.services.aethel_api import AethelAPIClient
 from bot.services.suppliers import SupplierRouter
+from bot.services.telegram_startup import wait_for_telegram
 from bot.services.payments import CryptoBotPayment, YooKassaPayment
 
 logger = structlog.get_logger()
@@ -192,6 +193,7 @@ async def main() -> None:
     # ── Start polling ────────────────────────────────────────────────
     logger.info("bot_started")
     try:
+        await wait_for_telegram(bot)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         logger.info("bot_stopping")
