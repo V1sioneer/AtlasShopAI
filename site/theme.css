@@ -1,0 +1,122 @@
+:root {
+  --secondary: #555750;
+  --label: #66675f;
+  --body-copy: #64655f;
+  --meta: #77786f;
+  --note-copy: #65665f;
+  --subtle: #85867e;
+  --faint: #a0a097;
+  --footnote: #898a82;
+  --answer: #686961;
+  --note-rule: #aaa99f;
+  --row-hover: rgba(255, 255, 255, .45);
+  --accent-ink: #fff;
+  --accent-hover: #c93d2a;
+  --active-ink: #fff;
+  --light-hover: #fff;
+  --toggle-shadow: 0 4px 18px rgba(32, 33, 31, .09);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #151816;
+  --white: #232823;
+  --ink: #f3f0e8;
+  --muted: #b2b9ad;
+  --line: #343c35;
+  --accent: #ed7b61;
+  --deep: #222823;
+  --secondary: #c3c9bc;
+  --label: #b4bcae;
+  --body-copy: #bac1b3;
+  --meta: #a8b1a0;
+  --note-copy: #b4bcae;
+  --subtle: #a0aa98;
+  --faint: #909b88;
+  --footnote: #a0aa98;
+  --answer: #bac1b3;
+  --note-rule: #495247;
+  --row-hover: rgba(255, 255, 255, .035);
+  --accent-ink: #151816;
+  --accent-hover: #fa947d;
+  --active-ink: #151816;
+  --light-hover: #30372f;
+  --toggle-shadow: 0 4px 20px rgba(0, 0, 0, .24);
+}
+
+.nav-links, .text-link, .footer-links a { color: var(--secondary); }
+.eyebrow { color: var(--label); }
+.hero-lede { color: var(--body-copy); }
+.note-top, .tab-btn, .footer-main > p { color: var(--meta); }
+.note-bottom { color: var(--note-copy); }
+.catalog-caption, .product-type { color: var(--subtle); }
+.product-no { color: var(--faint); }
+.product-main p { color: var(--muted); }
+.catalog-footnote, .footer-bottom { color: var(--footnote); }
+.faq-answer p { color: var(--answer); }
+.hero-note { border-color: var(--note-rule); }
+.product-row:hover { background: var(--row-hover); }
+.tab-btn.active { color: var(--active-ink); }
+.tab-btn:hover { color: var(--ink); }
+.tab-btn.active:hover { color: var(--active-ink); }
+.button-primary, .closing-band { color: var(--accent-ink); }
+.button-primary:hover { background: var(--accent-hover); }
+.button-light:hover { background: var(--light-hover); }
+.nav-links a:hover, .footer-links a:hover { color: var(--accent); }
+
+.theme-toggle {
+  position: fixed;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: var(--toggle-shadow);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.theme-toggle:hover { border-color: var(--accent); transform: translateY(-2px); }
+.theme-toggle:active { transform: scale(.95); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.theme-toggle:disabled { cursor: default; }
+.theme-icon { position: absolute; transition: opacity .25s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
+.theme-icon-moon { opacity: 1; transform: rotate(0) scale(1); }
+.theme-icon-sun { opacity: 0; transform: rotate(-90deg) scale(.5); }
+[data-theme="dark"] .theme-icon-moon { opacity: 0; transform: rotate(90deg) scale(.5); }
+[data-theme="dark"] .theme-icon-sun { opacity: 1; transform: rotate(0) scale(1); }
+.theme-reveal .theme-icon { transition: none; }
+
+/* New palette expands from the switch; the previous page stays below it. */
+::view-transition-old(root), ::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }
+
+/* Smooth color change for browsers without document view transitions. */
+.theme-fade, .theme-fade * {
+  transition-property: background-color, color, border-color, box-shadow, fill, stroke;
+  transition-duration: .45s;
+  transition-timing-function: ease;
+}
+
+@media (max-width: 620px) {
+  .theme-toggle {
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .footer-bottom { padding-bottom: 84px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle, .theme-icon { transition: none; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
