@@ -29,21 +29,34 @@ async def settle_payment(
     dep = await repo.get_by_external_id(external_id, method)
     if dep is None or (user_id is not None and dep.user_id != user_id):
         raise InvalidPayment("Платёж не найден или принадлежит другому пользователю")
-    identifier = payment.get("invoice_id") if method == "cryptobot" else payment.get("payment_id")
-    expected_status = "paid" if method == "cryptobot" else "succeeded"
+
+    if method == "cryptobot":
+        identifier = payment.get("invoice_id")
+        allowed_statuses = ("paid",)
+    elif method == "freekassa":
+        identifier = payment.get("order_id") or payment.get("payment_id") or payment.get("MERCHANT_ORDER_ID")
+        allowed_statuses = ("completed", "paid", "succeeded")
+    else:
+        identifier = payment.get("payment_id")
+        allowed_statuses = ("succeeded",)
+
     try:
         valid_amount = money(payment.get("amount")) == money(dep.amount_rub) and money(dep.amount_rub) > 0
     except ValueError:
         valid_amount = False
-    if (str(identifier) != external_id or payment.get("status") != expected_status
+
+    if (str(identifier) != external_id or payment.get("status") not in allowed_statuses
             or payment.get("currency") != "RUB" or not valid_amount):
         raise InvalidPayment("Реквизиты оплаты не совпадают с сохранённым счётом")
+
     metadata = payment.get("metadata", {})
     if metadata.get("user_id") is not None and str(metadata["user_id"]) != str(dep.user_id):
         raise InvalidPayment("Владелец оплаты не совпадает с владельцем счёта")
+
     payload = payment.get("payload")
     if payload and str(payload) != f"{dep.user_id}:{int(dep.amount_rub)}":
         raise InvalidPayment("Данные оплаты не совпадают с сохранённым счётом")
+
     deposit_id, owner, amount = dep.id, dep.user_id, dep.amount_rub
     # Release the read transaction before competing for the write claim.
     await session.commit()

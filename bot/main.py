@@ -26,7 +26,8 @@ from bot.services.partner_api import PartnerAPIClient, PartnerAPIError
 from bot.services.aethel_api import AethelAPIClient
 from bot.services.suppliers import SupplierRouter
 from bot.services.telegram_startup import wait_for_telegram
-from bot.services.payments import CryptoBotPayment, YooKassaPayment
+from bot.services.payments import CryptoBotPayment, FreeKassaPayment, YooKassaPayment
+from bot.services.freekassa_webhook import FreeKassaWebhookServer
 
 logger = structlog.get_logger()
 
@@ -122,6 +123,7 @@ async def main() -> None:
     # ── Init payment providers ───────────────────────────────────────
     cryptobot: CryptoBotPayment | None = None
     yookassa: YooKassaPayment | None = None
+    freekassa: FreeKassaPayment | None = None
 
     if settings.cryptobot_token:
         cryptobot = CryptoBotPayment(settings.cryptobot_token)
@@ -131,8 +133,17 @@ async def main() -> None:
         yookassa = YooKassaPayment(settings.yookassa_shop_id, settings.yookassa_secret_key)
         logger.info("payment_provider_enabled", provider="YooKassa")
 
+    if settings.freekassa_shop_id and settings.freekassa_secret_1 and settings.freekassa_secret_2:
+        freekassa = FreeKassaPayment(
+            shop_id=settings.freekassa_shop_id,
+            secret_1=settings.freekassa_secret_1,
+            secret_2=settings.freekassa_secret_2,
+        )
+        logger.info("payment_provider_enabled", provider="FreeKassa", shop_id=settings.freekassa_shop_id)
+
     dp["cryptobot"] = cryptobot
     dp["yookassa"] = yookassa
+    dp["freekassa"] = freekassa
 
     # ── Register routers ─────────────────────────────────────────────
     dp.include_router(admin.router)
@@ -144,6 +155,20 @@ async def main() -> None:
     dp.include_router(order.router)
     dp.include_router(balance.router)
     dp.include_router(history.router)
+
+    # ── Start webhook server ─────────────────────────────────────────
+    webhook_server: FreeKassaWebhookServer | None = None
+    if freekassa:
+        webhook_server = FreeKassaWebhookServer(
+            freekassa=freekassa,
+            session_factory=session_factory,
+            bot=bot,
+            admin_ids=settings.admin_ids,
+        )
+        await webhook_server.start(
+            host=settings.freekassa_webhook_host,
+            port=settings.freekassa_webhook_port,
+        )
 
     # ── Start background tasks ───────────────────────────────────────
     bg_tasks: list[asyncio.Task] = []
@@ -192,7 +217,6 @@ async def main() -> None:
             )
         )
 
-
     # ── Start polling ────────────────────────────────────────────────
     logger.info("bot_started")
     try:
@@ -200,6 +224,8 @@ async def main() -> None:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         logger.info("bot_stopping")
+        if webhook_server:
+            await webhook_server.stop()
         for task in bg_tasks:
             task.cancel()
         await asyncio.gather(*bg_tasks, return_exceptions=True)
@@ -208,6 +234,8 @@ async def main() -> None:
             await cryptobot.close()
         if yookassa:
             await yookassa.close()
+        if freekassa:
+            await freekassa.close()
         await close_db()
         await bot.session.close()
         logger.info("bot_stopped")

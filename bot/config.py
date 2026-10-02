@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     cryptobot_token: str = ""  # from @CryptoBot -> My Apps
     yookassa_shop_id: str = ""
     yookassa_secret_key: str = ""
+    freekassa_shop_id: str = ""
+    freekassa_secret_1: str = ""
+    freekassa_secret_2: str = ""
+    freekassa_webhook_host: str = "0.0.0.0"
+    freekassa_webhook_port: int = 8080
 
     @field_validator("admin_ids", mode="before")
     @classmethod

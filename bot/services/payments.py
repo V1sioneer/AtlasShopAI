@@ -156,3 +156,79 @@ class YooKassaPayment:
             "currency": data["amount"]["currency"],
             "metadata": data.get("metadata", {}),
         }
+
+
+class FreeKassaPayment:
+    """FreeKassa payment integration via SCI (pay.freekassa.ru) and Result URL notifications."""
+
+    BASE_URL = "https://pay.freekassa.ru"
+
+    def __init__(
+        self,
+        shop_id: str | int,
+        secret_1: str,
+        secret_2: str,
+    ) -> None:
+        self.shop_id = str(shop_id).strip()
+        self.secret_1 = secret_1.strip()
+        self.secret_2 = secret_2.strip()
+
+    async def close(self) -> None:
+        pass
+
+    def create_payment_url(
+        self,
+        amount: float,
+        order_id: str | int,
+        currency: str = "RUB",
+        user_id: int | None = None,
+    ) -> str:
+        """Generate FreeKassa SCI payment URL with signature.
+        Formula: md5(shop_id:amount:secret1:currency:order_id)
+        """
+        amount = money(amount)
+        if amount <= 0:
+            raise ValueError("Некорректная сумма")
+
+        # Standard amount format: integer when whole number, otherwise 2 decimal places
+        amount_str = f"{amount:.2f}" if (amount % 1 != 0) else str(int(amount))
+        sign_str = f"{self.shop_id}:{amount_str}:{self.secret_1}:{currency}:{order_id}"
+        sign = hashlib.md5(sign_str.encode("utf-8")).hexdigest()
+
+        url = (
+            f"{self.BASE_URL}/?m={self.shop_id}"
+            f"&oa={amount_str}"
+            f"&o={order_id}"
+            f"&s={sign}"
+            f"&currency={currency}"
+        )
+        if user_id is not None:
+            url += f"&us_user_id={user_id}"
+        return url
+
+    def verify_notification(self, data: dict) -> tuple[bool, str]:
+        """Verify FreeKassa Result URL notification signature.
+        Expected POST parameters:
+          MERCHANT_ID, AMOUNT, MERCHANT_ORDER_ID, SIGN
+        Formula:
+          md5(MERCHANT_ID:AMOUNT:secret2:MERCHANT_ORDER_ID)
+        """
+        shop_id = str(data.get("MERCHANT_ID") or data.get("merchant_id") or "").strip()
+        amount = str(data.get("AMOUNT") or data.get("amount") or "").strip()
+        order_id = str(data.get("MERCHANT_ORDER_ID") or data.get("merchant_order_id") or "").strip()
+        sign = str(data.get("SIGN") or data.get("sign") or "").strip()
+
+        if not shop_id or not amount or not order_id or not sign:
+            return False, "Отсутствуют обязательные параметры уведомления"
+
+        if shop_id != self.shop_id:
+            return False, f"Не совпадает ID магазина: ожидался {self.shop_id}, получен {shop_id}"
+
+        expected_sign = hashlib.md5(
+            f"{shop_id}:{amount}:{self.secret_2}:{order_id}".encode("utf-8")
+        ).hexdigest()
+
+        if not hmac.compare_digest(expected_sign.lower(), sign.lower()):
+            return False, "Неверная подпись уведомления"
+
+        return True, ""

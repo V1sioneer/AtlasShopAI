@@ -13,8 +13,8 @@ from aiogram.types import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import User
-from bot.db.repo import DepositRepo
-from bot.services.payments import CryptoBotPayment, YooKassaPayment
+from bot.db.repo import DepositRepo, UserRepo
+from bot.services.payments import CryptoBotPayment, FreeKassaPayment, YooKassaPayment
 from bot.services.settlement import InvalidPayment, expire_payment, settle_payment
 from bot.utils.formatting import format_price
 from bot.utils.money import topup_amount
@@ -105,6 +105,27 @@ async def cb_topup_amount(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+def _payment_methods_kb(amount: int) -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="💳 Банковская карта / СБП",
+                callback_data=f"pay_freekassa:{amount}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🤖 CryptoBot (криптовалюта)",
+                callback_data=f"pay_crypto:{amount}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="topup_balance"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 async def _show_payment_methods(message: Message, amount: int) -> None:
     kb = _payment_methods_kb(amount)
     await message.answer(
@@ -125,25 +146,139 @@ async def _show_payment_methods_edit(callback: CallbackQuery, amount: int) -> No
     )
 
 
-def _payment_methods_kb(amount: int) -> InlineKeyboardMarkup:
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text="💳 Банковская карта / СБП",
-                callback_data=f"pay_yookassa:{amount}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="🤖 CryptoBot (криптовалюта)",
-                callback_data=f"pay_crypto:{amount}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="topup_balance"),
-        ],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+# ═══════════════════════════════════════════════════════════════════════
+# FreeKassa (Банковская карта / СБП)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@router.callback_query(F.data.startswith("pay_freekassa:"))
+async def cb_pay_freekassa(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    db_user: User,
+    freekassa: FreeKassaPayment | None,
+    admin_ids: list[int],
+) -> None:
+    if not freekassa:
+        await callback.message.edit_text(  # type: ignore[union-attr]
+            "⚠️ Оплата картой/СБП временно недоступна. Попробуйте позже или используйте CryptoBot."
+        )
+        await callback.answer()
+        return
+
+    try:
+        amount = topup_amount(callback.data.split(":")[1])  # type: ignore[union-attr]
+    except (ValueError, IndexError):
+        await callback.answer("Некорректная сумма", show_alert=True)
+        return
+
+    # Create deposit record to obtain its ID
+    dep_repo = DepositRepo(session)
+    dep = await dep_repo.create(
+        user_id=db_user.id,
+        amount_rub=amount,
+        method="freekassa",
+        external_id=None,
+        pay_url=None,
+    )
+    await session.flush()
+
+    order_id = str(dep.id)
+    pay_url = freekassa.create_payment_url(
+        amount=amount,
+        order_id=order_id,
+        currency="RUB",
+        user_id=db_user.id,
+    )
+
+    dep.external_id = order_id
+    dep.pay_url = pay_url
+    await session.commit()
+
+    # Notify admins about topup request
+    if callback.bot and db_user.id not in admin_ids:
+        uname = f"@{db_user.username}" if db_user.username else "нет юзернейма"
+        name = db_user.first_name or "Пользователь"
+        for aid in admin_ids:
+            try:
+                await callback.bot.send_message(
+                    aid,
+                    f"💳 <b>Запрос на пополнение баланса</b>\n\n"
+                    f"👤 Пользователь: <b>{name}</b> ({uname})\n"
+                    f"🆔 ID: <code>{db_user.id}</code>\n"
+                    f"💵 Сумма: <b>{format_price(amount)}</b>\n"
+                    f"💳 Способ: FreeKassa (Карта / СБП)\n"
+                    f"🧾 Номер счёта: <code>#{order_id}</code>",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        f"💳 <b>Оплата через СБП / Карту (FreeKassa)</b>\n\n"
+        f"Сумма к оплате: <b>{format_price(amount)}</b>\n\n"
+        f"1. Нажмите <b>«Перейти к оплате»</b> для выбора метода (СБП, банковская карта).\n"
+        f"2. После подтверждения оплаты баланс зачислится автоматически (до 1-2 минут).\n\n"
+        f"Если баланс не обновился сразу, нажмите <b>«Проверить оплату»</b>.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💳 Перейти к оплате", url=pay_url)],
+                [InlineKeyboardButton(
+                    text="🔄 Проверить оплату",
+                    callback_data=f"check_freekassa:{dep.id}",
+                )],
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="topup_balance")],
+            ]
+        ),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("check_freekassa:"))
+async def cb_check_freekassa(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    db_user: User,
+    freekassa: FreeKassaPayment | None,
+) -> None:
+    if not freekassa:
+        await callback.answer("FreeKassa не настроена", show_alert=True)
+        return
+
+    try:
+        deposit_id = int(callback.data.split(":", 2)[1])  # type: ignore[union-attr]
+    except (ValueError, IndexError):
+        await callback.answer("Некорректный идентификатор платежа", show_alert=True)
+        return
+
+    dep_repo = DepositRepo(session)
+    dep = await dep_repo.get_by_external_id(str(deposit_id), "freekassa")
+    if not dep or dep.user_id != db_user.id:
+        await callback.answer("Платёж не найден", show_alert=True)
+        return
+
+    if dep.status == "paid":
+        user_repo = UserRepo(session)
+        user = await user_repo.get(db_user.id)
+        balance = user.balance_rub if user else 0.0
+        await callback.message.edit_text(  # type: ignore[union-attr]
+            f"✅ <b>Оплата получена!</b>\n\n"
+            f"Зачислено: <b>+{format_price(dep.amount_rub)}</b>\n"
+            f"Текущий баланс: <b>{format_price(balance)}</b>",
+            parse_mode="HTML",
+        )
+    elif dep.status == "expired":
+        await callback.message.edit_text("❌ Счёт истёк. Создайте новый.")  # type: ignore[union-attr]
+    else:
+        await callback.answer(
+            "⏳ Оплата ещё обрабатывается платёжной системой.\n"
+            "Если вы уже перевели средства, подождите 1–2 минуты и проверьте снова.",
+            show_alert=True,
+        )
+        return
+
+    await callback.answer()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -268,7 +403,6 @@ async def cb_check_crypto(
             await callback.answer("Платёж не прошёл проверку. Обратитесь в поддержку.", show_alert=True)
             return
         if settlement.applied:
-
             # Notify admins
             if callback.bot:
                 uname = f"@{db_user.username}" if db_user.username else "нет юзернейма"
@@ -308,7 +442,7 @@ async def cb_check_crypto(
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# YooKassa (карта / СБП)
+# YooKassa (Fallback / Legacy)
 # ═══════════════════════════════════════════════════════════════════════
 
 
@@ -411,7 +545,6 @@ async def cb_check_yookassa(
             await callback.answer("Платёж не прошёл проверку. Обратитесь в поддержку.", show_alert=True)
             return
         if settlement.applied:
-
             await callback.message.edit_text(  # type: ignore[union-attr]
                 f"✅ <b>Оплата получена!</b>\n\n"
                 f"Зачислено: {format_price(settlement.amount)}\n"
