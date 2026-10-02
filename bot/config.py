@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     freekassa_shop_id: str = ""
     freekassa_secret_1: str = ""
     freekassa_secret_2: str = ""
+    freekassa_base_url: str = "https://pay.freekassa.net"
     freekassa_webhook_host: str = "0.0.0.0"
     freekassa_webhook_port: int = 8080
 

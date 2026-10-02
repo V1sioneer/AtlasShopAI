@@ -159,19 +159,21 @@ class YooKassaPayment:
 
 
 class FreeKassaPayment:
-    """FreeKassa payment integration via SCI (pay.freekassa.ru) and Result URL notifications."""
+    """FreeKassa payment integration via SCI (pay.freekassa.net) and Result URL notifications."""
 
-    BASE_URL = "https://pay.freekassa.ru"
+    BASE_URL = "https://pay.freekassa.net"
 
     def __init__(
         self,
         shop_id: str | int,
         secret_1: str,
         secret_2: str,
+        base_url: str = BASE_URL,
     ) -> None:
         self.shop_id = str(shop_id).strip()
         self.secret_1 = secret_1.strip()
         self.secret_2 = secret_2.strip()
+        self.base_url = (base_url or self.BASE_URL).rstrip("/")
 
     async def close(self) -> None:
         pass
@@ -196,7 +198,7 @@ class FreeKassaPayment:
         sign = hashlib.md5(sign_str.encode("utf-8")).hexdigest()
 
         url = (
-            f"{self.BASE_URL}/?m={self.shop_id}"
+            f"{self.base_url}/?m={self.shop_id}"
             f"&oa={amount_str}"
             f"&o={order_id}"
             f"&s={sign}"

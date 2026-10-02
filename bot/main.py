@@ -138,8 +138,14 @@ async def main() -> None:
             shop_id=settings.freekassa_shop_id,
             secret_1=settings.freekassa_secret_1,
             secret_2=settings.freekassa_secret_2,
+            base_url=settings.freekassa_base_url,
         )
-        logger.info("payment_provider_enabled", provider="FreeKassa", shop_id=settings.freekassa_shop_id)
+        logger.info(
+            "payment_provider_enabled",
+            provider="FreeKassa",
+            shop_id=settings.freekassa_shop_id,
+            base_url=settings.freekassa_base_url,
+        )
 
     dp["cryptobot"] = cryptobot
     dp["yookassa"] = yookassa
