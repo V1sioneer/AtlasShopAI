@@ -1,0 +1,36 @@
+.downloads-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding-top: 35px;
+  padding-bottom: 45px;
+  border-top: 1px solid var(--line);
+}
+
+.downloads-copy h2 {
+  margin: 0 0 10px;
+  font: 650 clamp(26px, 3vw, 34px)/1.15 var(--display);
+  letter-spacing: -.045em;
+}
+
+.downloads-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.downloads-section .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .downloads-section {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
+    padding-top: 28px;
+    padding-bottom: 35px;
+  }
+}
